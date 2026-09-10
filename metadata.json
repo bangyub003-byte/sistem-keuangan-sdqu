@@ -1,0 +1,7 @@
+{
+  "name": "SI Keuangan SD Qur'an Unggulan Al-I'tisham Playen",
+  "description": "Sistem Informasi Keuangan Terpadu SD Qur'an Unggulan Al-I'tisham Playen terintegrasi Google Spreadsheet, Google Apps Script, dan Google Drive dengan hak akses Bendahara, Kepsek, dan Wali Murid.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
