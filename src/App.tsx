@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   UserAccount,
   Student,
@@ -178,6 +178,72 @@ export default function App() {
     }
   };
 
+  const pullSilently = useCallback(async () => {
+  if (!setting.gas_url) return;
+
+  const res = await StorageService.pullFromSpreadsheet(setting.gas_url);
+
+  if (res.success) {
+    if (res.students) {
+      setStudents(res.students);
+      StorageService.saveStudents(res.students);
+    }
+
+    if (res.transactions) {
+      setTransactions(res.transactions);
+      StorageService.saveTransactions(res.transactions);
+    }
+
+    if (res.keuangan) {
+      setKeuangan(res.keuangan);
+      StorageService.saveKeuangan(res.keuangan);
+    }
+
+    if (res.setting) {
+      setSetting(res.setting);
+    }
+  }
+}, [setting.gas_url]);
+
+
+const lastVersionRef = useRef<string | null>(null);
+
+
+useEffect(() => {
+  if (!currentUser || !setting.gas_url) return;
+
+  let cancelled = false;
+
+  const checkAndSync = async () => {
+    const remoteVersion = await StorageService.getRemoteVersion(setting.gas_url);
+
+    if (cancelled || !remoteVersion) return;
+
+    if (lastVersionRef.current !== remoteVersion) {
+      lastVersionRef.current = remoteVersion;
+      await pullSilently();
+    }
+  };
+
+  checkAndSync();
+
+  const interval = setInterval(checkAndSync, 15000);
+
+  const onVisible = () => {
+    if (document.visibilityState === 'visible') {
+      checkAndSync();
+    }
+  };
+
+  document.addEventListener('visibilitychange', onVisible);
+
+  return () => {
+    cancelled = true;
+    clearInterval(interval);
+    document.removeEventListener('visibilitychange', onVisible);
+  };
+
+}, [currentUser, setting.gas_url, pullSilently]);
  // SISWA
 const handleAddStudent = (newStudentData: Omit<Student, 'id_siswa'>) => {
   StorageService.addStudent(newStudentData, currentUser?.nama || 'Bendahara');
