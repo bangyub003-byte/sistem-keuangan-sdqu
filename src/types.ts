@@ -92,6 +92,7 @@ export interface Announcement {
   isi: string;
   penulis: string;
   is_penting?: boolean;
+  status_aktif?: boolean;
 }
 
 export interface ActivityLog {

@@ -11,6 +11,7 @@ interface PengaturanMenuProps {
   onResetData: () => void;
   onPullFromSpreadsheet?: () => void;
   onAddAnnouncement?: (ann: { judul: string; isi: string; is_penting?: boolean }) => void;
+  onToggleAnnouncement?: (id: string) => void;
   onDeleteAnnouncement?: (id: string) => void;
 }
 
@@ -21,6 +22,7 @@ export const PengaturanMenu: React.FC<PengaturanMenuProps> = ({
   onResetData,
   onPullFromSpreadsheet,
   onAddAnnouncement,
+  onToggleAnnouncement,
   onDeleteAnnouncement
 }) => {
   const [formData, setFormData] = useState<SchoolSetting>({ ...setting });
@@ -530,11 +532,16 @@ export const PengaturanMenu: React.FC<PengaturanMenuProps> = ({
             </div>
           </div>
 
-          {/* Daftar Pengumuman Aktif */}
+          {/* Daftar Pengumuman Sekolah */}
           <div>
-            <h4 className="font-bold text-xs text-slate-700 uppercase tracking-wider mb-2">
-              Daftar Pengumuman Aktif ({announcements.length})
-            </h4>
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="font-bold text-xs text-slate-700 uppercase tracking-wider">
+                Kelola Pengumuman ({announcements.length})
+              </h4>
+              <span className="text-[11px] text-slate-500">
+                Wali hanya dapat melihat pengumuman berstatus <strong>Aktif</strong>
+              </span>
+            </div>
 
             {announcements.length === 0 ? (
               <p className="text-xs text-slate-400 italic bg-slate-50 p-4 rounded-xl text-center">
@@ -545,8 +552,9 @@ export const PengaturanMenu: React.FC<PengaturanMenuProps> = ({
                 {announcements.map((ann) => {
                   const annId = ann.id_pengumuman || (ann as any).id;
                   const isPenting = ann.is_penting || (ann as any).priority === 'PENTING';
+                  const isAktif = ann.status_aktif !== false;
                   return (
-                    <div key={annId} className="p-3.5 bg-white hover:bg-slate-50 flex items-start justify-between gap-3">
+                    <div key={annId} className={`p-3.5 flex items-start justify-between gap-3 transition-colors ${isAktif ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/80 opacity-75'}`}>
                       <div className="space-y-1 grow min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -554,7 +562,12 @@ export const PengaturanMenu: React.FC<PengaturanMenuProps> = ({
                           }`}>
                             {isPenting ? 'PENTING' : 'INFO'}
                           </span>
-                          <h5 className="font-bold text-xs text-slate-900">{ann.judul}</h5>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            isAktif ? 'bg-teal-100 text-teal-800 border border-teal-200' : 'bg-slate-200 text-slate-600 border border-slate-300'
+                          }`}>
+                            {isAktif ? 'AKTIF' : 'NONAKTIF'}
+                          </span>
+                          <h5 className={`font-bold text-xs ${isAktif ? 'text-slate-900' : 'text-slate-500 line-through'}`}>{ann.judul}</h5>
                           <span className="text-[10px] text-slate-400">
                             &bull; {new Date(ann.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
                           </span>
@@ -564,20 +577,37 @@ export const PengaturanMenu: React.FC<PengaturanMenuProps> = ({
                         </p>
                       </div>
 
-                      {onDeleteAnnouncement && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (confirm(`Hapus pengumuman "${ann.judul}"?`)) {
-                              onDeleteAnnouncement(annId);
-                            }
-                          }}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
-                          title="Hapus pengumuman ini"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {onToggleAnnouncement && (
+                          <button
+                            type="button"
+                            onClick={() => onToggleAnnouncement(annId)}
+                            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-all cursor-pointer ${
+                              isAktif
+                                ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                                : 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                            }`}
+                            title={isAktif ? 'Nonaktifkan pengumuman ini agar tidak tampil di wali' : 'Aktifkan kembali pengumuman ini'}
+                          >
+                            {isAktif ? 'Nonaktifkan' : 'Aktifkan'}
+                          </button>
+                        )}
+
+                        {onDeleteAnnouncement && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm(`Hapus permanen pengumuman "${ann.judul}"?`)) {
+                                onDeleteAnnouncement(annId);
+                              }
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Hapus pengumuman ini secara permanen"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}

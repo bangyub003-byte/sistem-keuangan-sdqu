@@ -3,12 +3,13 @@ export const GOOGLE_APPS_SCRIPT_CODE = `/**
  * BACKEND GOOGLE APPS SCRIPT (Code.gs)
  * SISTEM INFORMASI KEUANGAN SD QUR'AN UNGGULAN AL-I'TISHAM PLAYEN
  * Terintegrasi Google Spreadsheet & Google Drive
+ * Arsitektur: Single-Pipeline CRUD, Versioned Realtime Sync & Logging
  * =========================================================================
  */
 
 // 1. Inisialisasi Nama Spreadsheet & Sheet
 var SPREADSHEET_ID = ""; // Kosongkan jika script terpasang langsung di spreadsheet (Container-Bound)
-var DRIVE_FOLDER_ID = ""; // ID Folder Google Drive untuk bukti transaksi & foto siswa (Opsional)
+var DRIVE_FOLDER_ID = ""; // ID Folder Google Drive untuk bukti transaksi & foto murid (Opsional)
 
 function getSpreadsheet() {
   if (SPREADSHEET_ID && SPREADSHEET_ID.trim() !== "") {
@@ -18,18 +19,58 @@ function getSpreadsheet() {
 }
 
 /**
- * Endpoint HTTP GET: Untuk pengujian koneksi & mengambil seluruh data
+ * Versioning helper untuk sinkronisasi antar perangkat tanpa membebani spreadsheet
+ */
+function getVersion() {
+  var props = PropertiesService.getScriptProperties();
+  var ver = props.getProperty("DATA_VERSION");
+  if (!ver) {
+    ver = String(new Date().getTime());
+    props.setProperty("DATA_VERSION", ver);
+  }
+  return ver;
+}
+
+function bumpVersion() {
+  var ver = String(new Date().getTime());
+  PropertiesService.getScriptProperties().setProperty("DATA_VERSION", ver);
+  return ver;
+}
+
+/**
+ * Trigger otomatis jika admin mengedit spreadsheet langsung via antarmuka Google Sheet
+ */
+function onEdit(e) {
+  try {
+    bumpVersion();
+  } catch (err) {}
+}
+
+/**
+ * Endpoint HTTP GET: Untuk polling getVersion (ringan), ping, & getAllData
  */
 function doGet(e) {
   var action = (e && e.parameter && e.parameter.action) ? e.parameter.action : "getAllData";
   var result = {};
-  
+
   try {
     if (action === "ping") {
-      result = { status: "success", message: "Koneksi Google Apps Script SD Qur'an Unggulan Al-I'tisham Playen Aktif!", timestamp: new Date() };
-    } else if (action === "getAllData") {
       result = {
         status: "success",
+        message: "Koneksi Google Apps Script SD Qur'an Unggulan Al-I'tisham Playen Aktif!",
+        version: getVersion(),
+        timestamp: new Date().toISOString()
+      };
+    } else if (action === "getVersion") {
+      // Endpoint ringan: Hanya membaca PropertiesService tanpa menyentuh Spreadsheet
+      result = {
+        status: "success",
+        version: getVersion()
+      };
+    } else if (action === "getAllData" || action === "getData") {
+      result = {
+        status: "success",
+        version: getVersion(),
         data: fetchAllSheetsData()
       };
     } else {
@@ -38,18 +79,18 @@ function doGet(e) {
   } catch (err) {
     result = { status: "error", message: err.toString() };
   }
-  
+
   return ContentService.createTextOutput(JSON.stringify(result))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
 /**
- * Endpoint HTTP POST: Menangani Login, Tambah/Edit Siswa, Pembayaran, Keuangan & Upload Drive
+ * Endpoint HTTP POST: Menangani Seluruh Operasi Tulis (CRUD Spesifik Satu Jalur)
  */
 function doPost(e) {
   var response = {};
   try {
-    var rawData = e.postData.contents;
+    var rawData = e && e.postData ? e.postData.contents : "{}";
     var request = JSON.parse(rawData);
     var action = request.action;
     var payload = request.payload || {};
@@ -70,6 +111,14 @@ function doPost(e) {
         response = handleUpdateStudent(ss, payload);
         break;
 
+      case "DELETE_STUDENT":
+        response = handleDeleteStudent(ss, payload);
+        break;
+
+      case "BULK_IMPORT_STUDENTS":
+        response = handleBulkImportStudents(ss, payload);
+        break;
+
       case "PROCESS_PAYMENT":
         response = handleProcessPayment(ss, payload);
         break;
@@ -78,12 +127,29 @@ function doPost(e) {
         response = handleCancelPayment(ss, payload);
         break;
 
+      case "VERIFY_TRANSACTION":
+      case "UPDATE_TRANSACTION_STATUS":
+        response = handleVerifyTransaction(ss, payload);
+        break;
+
       case "ADD_KEUANGAN":
         response = handleAddKeuangan(ss, payload);
         break;
 
       case "UPDATE_SETTING":
         response = handleUpdateSetting(ss, payload);
+        break;
+
+      case "ADD_ANNOUNCEMENT":
+        response = handleAddAnnouncement(ss, payload);
+        break;
+
+      case "TOGGLE_ANNOUNCEMENT":
+        response = handleToggleAnnouncement(ss, payload);
+        break;
+
+      case "DELETE_ANNOUNCEMENT":
+        response = handleDeleteAnnouncement(ss, payload);
         break;
 
       case "UPLOAD_DRIVE_FILE":
@@ -97,11 +163,6 @@ function doPost(e) {
         response = handleSyncAllData(ss, payload);
         break;
 
-      case "VERIFY_TRANSACTION":
-      case "UPDATE_TRANSACTION_STATUS":
-        response = handleVerifyTransaction(ss, payload);
-        break;
-
       default:
         response = { status: "error", message: "Action tidak didukung: " + action };
     }
@@ -110,20 +171,28 @@ function doPost(e) {
     response = { status: "error", message: error.toString() };
   }
 
+  // Sertakan version terbaru pada setiap response sukses
+  try {
+    if (response && response.status === "success") {
+      response.version = getVersion();
+    }
+  } catch (err) {}
+
   return ContentService.createTextOutput(JSON.stringify(response))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
 /**
- * 1. Otomatis membuat 6 Sheet jika belum tersedia di Spreadsheet
+ * 1. Otomatis membuat 7 Sheet resmi jika belum tersedia di Spreadsheet
  */
 function checkAndInitSheets(ss) {
   var requiredSheets = {
-    "USER": ["id_user", "username", "password", "nama", "role", "id_siswa"],
-    "SISWA": ["id_siswa", "nisn", "nik", "nama", "tempat_lahir", "tanggal_lahir", "jenis_kelamin", "kelas", "nama_wali", "no_hp", "alamat", "foto", "spp_nominal", "spp_kategori", "spp_catatan"],
-    "TRANSAKSI": ["id_transaksi", "tanggal", "nisn", "jenis", "kategori", "nominal_tagihan", "nominal_bayar", "sisa", "status", "petugas", "alasan_batal"],
-    "KEUANGAN": ["tanggal", "jenis", "kategori", "nominal", "keterangan", "bukti"],
+    "USER": ["id_user", "username", "password", "nama", "role", "id_siswa", "nisn"],
+    "SISWA": ["id_siswa", "nisn", "nik", "nama", "tempat_lahir", "tanggal_lahir", "jenis_kelamin", "kelas", "nama_wali", "no_hp", "alamat", "foto", "spp_nominal", "spp_kategori", "spp_catatan", "status_aktif"],
+    "TRANSAKSI": ["id_transaksi", "tanggal", "nisn", "nama_siswa", "kelas", "jenis", "kategori", "bulan", "nominal_tagihan", "nominal_bayar", "sisa", "status", "petugas", "keterangan", "alasan_batal"],
+    "KEUANGAN": ["id_keuangan", "tanggal", "jenis", "kategori", "nominal", "keterangan", "bukti", "petugas"],
     "SETTING": ["nama_sekolah", "logo", "alamat", "no_wa", "kop_surat", "tahun_ajaran", "nama_kepsek", "nama_bendahara", "spp_default_nominal", "nama_bank", "no_rekening", "atas_nama_rekening", "qris_image"],
+    "PENGUMUMAN": ["id_pengumuman", "tanggal", "judul", "isi", "penulis", "is_penting", "status_aktif"],
     "LOG": ["tanggal", "user", "aktivitas"]
   };
 
@@ -132,14 +201,12 @@ function checkAndInitSheets(ss) {
     if (!sheet) {
       sheet = ss.insertSheet(sheetName);
       sheet.appendRow(requiredSheets[sheetName]);
-      // Format Header
       var headerRange = sheet.getRange(1, 1, 1, requiredSheets[sheetName].length);
       headerRange.setFontWeight("bold").setBackground("#047857").setFontColor("#FFFFFF");
-      
-      // Data Default jika USER sheet baru dibuat
+
       if (sheetName === "USER") {
-        sheet.appendRow(["USR-001", "bendahara", "123", "Usth. Nur Khasanah (Bendahara)", "BENDAHARA", ""]);
-        sheet.appendRow(["USR-002", "kepsek", "123", "Ust. H. Ahmad Mufid (Kepala Sekolah)", "KEPSEK", ""]);
+        sheet.appendRow(["USR-001", "bendahara", "123", "Usth. Nur Khasanah (Bendahara)", "BENDAHARA", "", ""]);
+        sheet.appendRow(["USR-002", "kepsek", "123", "Ust. H. Ahmad Mufid (Kepala Sekolah)", "KEPSEK", "", ""]);
       }
       if (sheetName === "SETTING") {
         sheet.appendRow([
@@ -163,7 +230,7 @@ function checkAndInitSheets(ss) {
 }
 
 /**
- * 2. Mengambil seluruh data dari 6 Sheet
+ * 2. Mengambil seluruh data dari 7 Sheet
  */
 function fetchAllSheetsData() {
   var ss = getSpreadsheet();
@@ -175,6 +242,7 @@ function fetchAllSheetsData() {
     transactions: getSheetRows(ss, "TRANSAKSI"),
     keuangan: getSheetRows(ss, "KEUANGAN"),
     settings: getSheetRows(ss, "SETTING")[0] || null,
+    announcements: getSheetRows(ss, "PENGUMUMAN"),
     logs: getSheetRows(ss, "LOG")
   };
 }
@@ -193,9 +261,8 @@ function getSheetRows(ss, sheetName) {
     for (var j = 0; j < headers.length; j++) {
       var rawHeader = headers[j] ? headers[j].toString().trim() : "";
       if (!rawHeader) continue;
-      
-      // Normalisasi header agar jika di Spreadsheet tertulis "Nama Kepala Sekolah" tetap terbaca "nama_kepsek"
-      var normalizedKey = rawHeader.toLowerCase().replace(/[\s\-_]+/g, "_");
+
+      var normalizedKey = rawHeader.toLowerCase().replace(/[\\s\\-_]+/g, "_");
       if (normalizedKey === "kepala_sekolah" || normalizedKey === "nama_kepala_sekolah" || normalizedKey === "kepsek") {
         normalizedKey = "nama_kepsek";
       } else if (normalizedKey === "bendahara" || normalizedKey === "nama_bendahara") {
@@ -219,7 +286,6 @@ function getSheetRows(ss, sheetName) {
         cellVal = Utilities.formatDate(cellVal, Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss");
       }
       row[normalizedKey] = cellVal;
-      // Tetap sediakan rawHeader juga
       row[rawHeader] = cellVal;
     }
     rows.push(row);
@@ -232,12 +298,15 @@ function getSheetRows(ss, sheetName) {
  */
 function handleLogin(ss, payload) {
   var users = getSheetRows(ss, "USER");
-  var username = (payload.username || "").trim();
-  var password = (payload.password || "").trim();
+  var username = String(payload.username || "").trim().toLowerCase();
+  var password = String(payload.password || "").trim();
 
   for (var i = 0; i < users.length; i++) {
     var u = users[i];
-    if (String(u.username).trim() === username && String(u.password).trim() === password) {
+    var uName = String(u.username || "").trim().toLowerCase();
+    var uPass = String(u.password || "").trim();
+
+    if (uName === username && uPass === password) {
       appendLog(ss, u.nama, "Berhasil masuk sistem (Login) sebagai " + u.role);
       return {
         status: "success",
@@ -246,7 +315,8 @@ function handleLogin(ss, payload) {
           username: u.username,
           nama: u.nama,
           role: u.role,
-          id_siswa: u.id_siswa
+          id_siswa: u.id_siswa,
+          nisn: u.nisn || u.username
         }
       };
     }
@@ -255,42 +325,47 @@ function handleLogin(ss, payload) {
 }
 
 /**
- * 4. Tambah & Update Siswa
+ * 4. Tambah, Update, Delete & Import Murid
  */
 function handleAddStudent(ss, student) {
   var sheet = ss.getSheetByName("SISWA");
-  var newId = "SISWA-" + Utilities.formatDate(new Date(), "GMT+7", "yyyyMMddHHmmss");
-  
+  var newId = student.id_siswa || ("SISWA-" + Utilities.formatDate(new Date(), "GMT+7", "yyyyMMddHHmmss"));
+
   sheet.appendRow([
     newId,
     student.nisn,
-    student.nik,
+    student.nik || "",
     student.nama,
-    student.tempat_lahir,
-    student.tanggal_lahir,
-    student.jenis_kelamin,
-    student.kelas,
-    student.nama_wali,
-    student.no_hp,
-    student.alamat,
+    student.tempat_lahir || "Gunungkidul",
+    student.tanggal_lahir || "2017-01-01",
+    student.jenis_kelamin || "L",
+    student.kelas || "1A",
+    student.nama_wali || "",
+    student.no_hp || "",
+    student.alamat || "",
     student.foto || "",
-    student.spp_nominal || 500000,
+    Number(student.spp_nominal) || 500000,
     student.spp_kategori || "REGULER",
-    student.spp_catatan || ""
+    student.spp_catatan || "",
+    student.status_aktif !== false
   ]);
 
-  // Otomatis buat akun wali jika belum ada
+  // Otomatis buat akun wali di sheet USER jika belum ada
   var userSheet = ss.getSheetByName("USER");
-  userSheet.appendRow([
-    "USR-" + student.nisn,
-    student.nisn,
-    student.nisn, // password default adalah NISN
-    student.nama_wali + " (Wali " + student.nama + ")",
-    "WALI",
-    newId
-  ]);
+  if (userSheet) {
+    userSheet.appendRow([
+      "USR-" + student.nisn,
+      student.nisn,
+      student.nisn,
+      (student.nama_wali || "Wali") + " (Wali " + student.nama + ")",
+      "WALI",
+      newId,
+      student.nisn
+    ]);
+  }
 
   appendLog(ss, student.petugas || "Bendahara", "Menambah murid baru: " + student.nama + " (NISN: " + student.nisn + ")");
+  bumpVersion();
 
   return { status: "success", id_siswa: newId, message: "Data murid dan akun wali berhasil disimpan ke Spreadsheet!" };
 }
@@ -299,54 +374,168 @@ function handleUpdateStudent(ss, student) {
   var sheet = ss.getSheetByName("SISWA");
   var data = sheet.getDataRange().getValues();
   for (var i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === String(student.id_siswa) || String(data[i][1]) === String(student.nisn)) {
+    if (String(data[i][0]).trim() === String(student.id_siswa).trim() || String(data[i][1]).trim() === String(student.nisn).trim()) {
       var rowIdx = i + 1;
-      sheet.getRange(rowIdx, 3).setValue(student.nik);
+      sheet.getRange(rowIdx, 3).setValue(student.nik || "");
       sheet.getRange(rowIdx, 4).setValue(student.nama);
-      sheet.getRange(rowIdx, 5).setValue(student.tempat_lahir);
-      sheet.getRange(rowIdx, 6).setValue(student.tanggal_lahir);
-      sheet.getRange(rowIdx, 7).setValue(student.jenis_kelamin);
-      sheet.getRange(rowIdx, 8).setValue(student.kelas);
-      sheet.getRange(rowIdx, 9).setValue(student.nama_wali);
-      sheet.getRange(rowIdx, 10).setValue(student.no_hp);
-      sheet.getRange(rowIdx, 11).setValue(student.alamat);
+      sheet.getRange(rowIdx, 5).setValue(student.tempat_lahir || "");
+      sheet.getRange(rowIdx, 6).setValue(student.tanggal_lahir || "");
+      sheet.getRange(rowIdx, 7).setValue(student.jenis_kelamin || "L");
+      sheet.getRange(rowIdx, 8).setValue(student.kelas || "");
+      sheet.getRange(rowIdx, 9).setValue(student.nama_wali || "");
+      sheet.getRange(rowIdx, 10).setValue(student.no_hp || "");
+      sheet.getRange(rowIdx, 11).setValue(student.alamat || "");
       if (student.foto) sheet.getRange(rowIdx, 12).setValue(student.foto);
-      sheet.getRange(rowIdx, 13).setValue(student.spp_nominal);
+      sheet.getRange(rowIdx, 13).setValue(Number(student.spp_nominal) || 500000);
       sheet.getRange(rowIdx, 14).setValue(student.spp_kategori || "REGULER");
       sheet.getRange(rowIdx, 15).setValue(student.spp_catatan || "");
-      
+      if (student.status_aktif !== undefined) sheet.getRange(rowIdx, 16).setValue(student.status_aktif);
+
       appendLog(ss, student.petugas || "Bendahara", "Memperbarui data murid: " + student.nama);
-      return { status: "success", message: "Data murid berhasil diperbarui!" };
+      bumpVersion();
+      return { status: "success", message: "Data murid berhasil diperbarui di Spreadsheet!" };
     }
   }
-  return { status: "error", message: "Murid tidak ditemukan di Spreadsheet" };
+  return { status: "error", message: "Data murid tidak ditemukan di Spreadsheet" };
+}
+
+function handleDeleteStudent(ss, payload) {
+  var sheet = ss.getSheetByName("SISWA");
+  var data = sheet.getDataRange().getValues();
+  var target = String(payload.id_siswa || payload.nisn || "").trim();
+
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]).trim() === target || String(data[i][1]).trim() === target) {
+      var studentName = data[i][3];
+      var studentNisn = data[i][1];
+      sheet.deleteRow(i + 1);
+
+      // Hapus juga akun wali dari USER
+      var userSheet = ss.getSheetByName("USER");
+      if (userSheet) {
+        var uData = userSheet.getDataRange().getValues();
+        for (var u = 1; u < uData.length; u++) {
+          if (String(uData[u][1]).trim() === String(studentNisn).trim()) {
+            userSheet.deleteRow(u + 1);
+            break;
+          }
+        }
+      }
+
+      appendLog(ss, payload.petugas || "Bendahara", "Menghapus murid: " + studentName + " (NISN: " + studentNisn + ")");
+      bumpVersion();
+      return { status: "success", message: "Murid berhasil dihapus dari Spreadsheet!" };
+    }
+  }
+  return { status: "error", message: "Murid tidak ditemukan di Sheet SISWA" };
+}
+
+function handleBulkImportStudents(ss, payload) {
+  var sheet = ss.getSheetByName("SISWA");
+  var userSheet = ss.getSheetByName("USER");
+  var list = payload.students || [];
+  if (!list.length) return { status: "error", message: "Daftar murid kosong" };
+
+  var existing = sheet.getDataRange().getValues();
+  var existingNisns = {};
+  for (var i = 1; i < existing.length; i++) {
+    existingNisns[String(existing[i][1]).trim()] = true;
+  }
+
+  var count = 0;
+  for (var j = 0; j < list.length; j++) {
+    var st = list[j];
+    var nisn = String(st.nisn || "").trim();
+    if (!nisn || existingNisns[nisn]) continue;
+
+    var newId = st.id_siswa || ("SISWA-" + Utilities.formatDate(new Date(), "GMT+7", "yyyyMMddHHmmss") + "-" + j);
+    sheet.appendRow([
+      newId,
+      nisn,
+      st.nik || "",
+      st.nama || "",
+      st.tempat_lahir || "Gunungkidul",
+      st.tanggal_lahir || "2017-01-01",
+      st.jenis_kelamin || "L",
+      st.kelas || "1A",
+      st.nama_wali || "",
+      st.no_hp || "",
+      st.alamat || "",
+      st.foto || "",
+      Number(st.spp_nominal) || 500000,
+      st.spp_kategori || "REGULER",
+      st.spp_catatan || "",
+      true
+    ]);
+
+    if (userSheet) {
+      userSheet.appendRow([
+        "USR-" + nisn,
+        nisn,
+        nisn,
+        (st.nama_wali || "Wali") + " (Wali " + (st.nama || "Murid") + ")",
+        "WALI",
+        newId,
+        nisn
+      ]);
+    }
+    count++;
+  }
+
+  appendLog(ss, payload.petugas || "Bendahara", "Import massal " + count + " murid baru");
+  bumpVersion();
+  return { status: "success", count: count, message: "Berhasil import " + count + " murid ke Spreadsheet!" };
 }
 
 /**
- * 5. Handle Pembayaran Murid
+ * 5. Handle Pembayaran Murid (Menulis ke TRANSAKSI & KEUANGAN)
  */
 function handleProcessPayment(ss, trx) {
   var sheet = ss.getSheetByName("TRANSAKSI");
-  var newTrxId = "TRX-" + Utilities.formatDate(new Date(), "GMT+7", "yyyyMMddHHmmss");
-  var dateStr = Utilities.formatDate(new Date(), "GMT+7", "yyyy-MM-dd");
+  var newTrxId = trx.id_transaksi || ("TRX-" + Utilities.formatDate(new Date(), "GMT+7", "yyyyMMddHHmmss"));
+  var dateStr = trx.tanggal || Utilities.formatDate(new Date(), "GMT+7", "yyyy-MM-dd");
 
   sheet.appendRow([
     newTrxId,
     dateStr,
     trx.nisn,
-    trx.jenis,
+    trx.nama_siswa || "",
+    trx.kelas || "",
+    trx.jenis || "SPP",
     trx.kategori || "SPP",
-    trx.nominal_tagihan,
-    trx.nominal_bayar,
-    trx.sisa,
-    trx.status,
-    trx.petugas,
+    trx.bulan || "",
+    Number(trx.nominal_tagihan) || 0,
+    Number(trx.nominal_bayar) || 0,
+    Number(trx.sisa) || 0,
+    trx.status || "LUNAS",
+    trx.petugas || "Bendahara",
+    trx.keterangan || "",
     ""
   ]);
 
-  appendLog(ss, trx.petugas, "Input transaksi " + trx.jenis + " Murid NISN: " + trx.nisn + " Senilai Rp" + trx.nominal_bayar + " (" + trx.status + ")");
+  // Otomatis catat juga ke Sheet KEUANGAN sebagai kas masuk jika nominal_bayar > 0
+  if (Number(trx.nominal_bayar) > 0) {
+    var kSheet = ss.getSheetByName("KEUANGAN");
+    if (kSheet) {
+      var kId = "KUG-" + Utilities.formatDate(new Date(), "GMT+7", "yyyyMMddHHmmss");
+      var ket = (trx.jenis || "SPP") + " " + (trx.bulan || "") + " a.n " + (trx.nama_siswa || trx.nisn) + " (" + (trx.kelas || "") + ")";
+      kSheet.appendRow([
+        kId,
+        dateStr,
+        "MASUK",
+        trx.kategori || "SPP",
+        Number(trx.nominal_bayar),
+        ket,
+        "",
+        trx.petugas || "Bendahara"
+      ]);
+    }
+  }
 
-  return { status: "success", id_transaksi: newTrxId, message: "Pembayaran berhasil dicatat di Spreadsheet!" };
+  appendLog(ss, trx.petugas || "Bendahara", "Input transaksi " + trx.jenis + " Murid " + (trx.nama_siswa || trx.nisn) + " senilai Rp" + trx.nominal_bayar + " (" + trx.status + ")");
+  bumpVersion();
+
+  return { status: "success", id_transaksi: newTrxId, message: "Pembayaran berhasil dicatat permanen di Spreadsheet!" };
 }
 
 /**
@@ -355,44 +544,83 @@ function handleProcessPayment(ss, trx) {
 function handleCancelPayment(ss, payload) {
   var sheet = ss.getSheetByName("TRANSAKSI");
   var data = sheet.getDataRange().getValues();
-  var trxId = payload.id_transaksi;
-  var reason = payload.alasan_batal;
+  var trxId = String(payload.id_transaksi || "").trim();
+  var reason = payload.alasan_batal || "Dibatalkan oleh Bendahara";
 
   for (var i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === String(trxId)) {
+    if (String(data[i][0]).trim() === trxId) {
       var rowIdx = i + 1;
-      sheet.getRange(rowIdx, 9).setValue("CANCEL");
-      sheet.getRange(rowIdx, 11).setValue(reason);
+      sheet.getRange(rowIdx, 12).setValue("CANCEL");
+      sheet.getRange(rowIdx, 15).setValue(reason);
 
       appendLog(ss, payload.petugas || "Bendahara", "MEMBATALKAN transaksi " + trxId + ". Alasan: " + reason);
-      return { status: "success", message: "Transaksi berhasil dibatalkan dan tercatat di LOG!" };
+      bumpVersion();
+      return { status: "success", message: "Transaksi berhasil dibatalkan dan tercatat di Spreadsheet!" };
     }
   }
-  return { status: "error", message: "ID Transaksi tidak ditemukan" };
+  return { status: "error", message: "ID Transaksi " + trxId + " tidak ditemukan di Sheet TRANSAKSI" };
 }
 
 /**
- * 7. Handle Keuangan Masuk / Keluar
+ * 7. Handle Verifikasi Status Transaksi
+ */
+function handleVerifyTransaction(ss, payload) {
+  var sheet = ss.getSheetByName("TRANSAKSI");
+  var data = sheet.getDataRange().getValues();
+  var trxId = String(payload.id_transaksi || "").trim();
+  var newStatus = payload.status;
+  var nominalBayar = payload.nominal_bayar;
+  var sisa = payload.sisa;
+  var reason = payload.alasan_batal || "";
+
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]).trim() === trxId) {
+      var rowIdx = i + 1;
+      if (nominalBayar !== undefined && nominalBayar !== null) {
+        sheet.getRange(rowIdx, 10).setValue(Number(nominalBayar));
+      }
+      if (sisa !== undefined && sisa !== null) {
+        sheet.getRange(rowIdx, 11).setValue(Number(sisa));
+      }
+      sheet.getRange(rowIdx, 12).setValue(newStatus);
+      if (reason) {
+        sheet.getRange(rowIdx, 15).setValue(reason);
+      }
+
+      appendLog(ss, payload.petugas || "Bendahara", "Verifikasi transaksi " + trxId + " menjadi " + newStatus + (reason ? " [" + reason + "]" : ""));
+      bumpVersion();
+      return { status: "success", message: "Transaksi " + trxId + " berhasil diverifikasi menjadi " + newStatus + "!" };
+    }
+  }
+  return { status: "error", message: "ID Transaksi " + trxId + " tidak ditemukan di Sheet TRANSAKSI" };
+}
+
+/**
+ * 8. Handle Keuangan Masuk / Keluar (Kas Lembaga)
  */
 function handleAddKeuangan(ss, k) {
   var sheet = ss.getSheetByName("KEUANGAN");
+  var newId = k.id_keuangan || ("KUG-" + Utilities.formatDate(new Date(), "GMT+7", "yyyyMMddHHmmss"));
   var dateStr = k.tanggal || Utilities.formatDate(new Date(), "GMT+7", "yyyy-MM-dd");
 
   sheet.appendRow([
+    newId,
     dateStr,
-    k.jenis,
-    k.kategori,
-    k.nominal,
-    k.keterangan,
-    k.bukti || ""
+    k.jenis || "MASUK",
+    k.kategori || "Operasional",
+    Number(k.nominal) || 0,
+    k.keterangan || "",
+    k.bukti || "",
+    k.petugas || "Bendahara"
   ]);
 
-  appendLog(ss, k.petugas || "Bendahara", "Input Kas " + k.jenis + " kategori " + k.kategori + " senilai Rp" + k.nominal);
-  return { status: "success", message: "Kas " + k.jenis + " berhasil disimpan!" };
+  appendLog(ss, k.petugas || "Bendahara", "Input Kas " + k.jenis + " [" + k.kategori + "] Rp" + k.nominal + " - " + k.keterangan);
+  bumpVersion();
+  return { status: "success", id_keuangan: newId, message: "Catatan keuangan kas berhasil disimpan ke Spreadsheet!" };
 }
 
 /**
- * 7b. Handle Update Profil Lembaga & Kepala Sekolah di Sheet SETTING
+ * 9. Handle Update Profil Lembaga & Pengaturan di Sheet SETTING
  */
 function handleUpdateSetting(ss, s) {
   var sheet = ss.getSheetByName("SETTING");
@@ -403,7 +631,7 @@ function handleUpdateSetting(ss, s) {
   if (!sheet) return { status: "error", message: "Sheet SETTING tidak ditemukan" };
 
   var headers = ["nama_sekolah", "logo", "alamat", "no_wa", "kop_surat", "tahun_ajaran", "nama_kepsek", "nama_bendahara", "spp_default_nominal", "nama_bank", "no_rekening", "atas_nama_rekening", "qris_image"];
-  
+
   var rowData = [
     s.nama_sekolah || "",
     s.logo || "",
@@ -426,12 +654,78 @@ function handleUpdateSetting(ss, s) {
     sheet.appendRow(rowData);
   }
 
-  appendLog(ss, s.nama_bendahara || "Bendahara", "Memperbarui Profil Sekolah / Kepala Sekolah: " + (s.nama_kepsek || ""));
-  return { status: "success", message: "Pengaturan & Nama Kepala Sekolah berhasil diperbarui di Spreadsheet!" };
+  appendLog(ss, s.nama_bendahara || "Bendahara", "Memperbarui Profil Sekolah / Nama Kepala Sekolah: " + (s.nama_kepsek || ""));
+  bumpVersion();
+  return { status: "success", message: "Pengaturan profil sekolah berhasil diperbarui di Spreadsheet!" };
 }
 
 /**
- * 8. Handle Upload File ke Google Drive
+ * 10. Handle Pengumuman Sekolah
+ */
+function handleAddAnnouncement(ss, payload) {
+  var sheet = ss.getSheetByName("PENGUMUMAN");
+  if (!sheet) {
+    checkAndInitSheets(ss);
+    sheet = ss.getSheetByName("PENGUMUMAN");
+  }
+  var newId = payload.id_pengumuman || ("ANN-" + new Date().getTime());
+  var dateStr = payload.tanggal || Utilities.formatDate(new Date(), "GMT+7", "yyyy-MM-dd");
+
+  sheet.appendRow([
+    newId,
+    dateStr,
+    payload.judul || "",
+    payload.isi || "",
+    payload.penulis || "Bendahara",
+    payload.is_penting ? true : false,
+    payload.status_aktif !== false
+  ]);
+
+  appendLog(ss, payload.penulis || "Bendahara", "Menerbitkan Pengumuman: " + payload.judul);
+  bumpVersion();
+  return { status: "success", id_pengumuman: newId, message: "Pengumuman berhasil disimpan ke Spreadsheet!" };
+}
+
+function handleToggleAnnouncement(ss, payload) {
+  var sheet = ss.getSheetByName("PENGUMUMAN");
+  if (!sheet) return { status: "error", message: "Sheet PENGUMUMAN tidak ditemukan" };
+  var data = sheet.getDataRange().getValues();
+  var id = String(payload.id_pengumuman || "").trim();
+
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]).trim() === id) {
+      var rowIdx = i + 1;
+      var cur = data[i][6];
+      var nextState = payload.status_aktif !== undefined ? payload.status_aktif : (cur === false);
+      sheet.getRange(rowIdx, 7).setValue(nextState);
+
+      appendLog(ss, payload.petugas || "Bendahara", "Mengubah status aktif pengumuman ID " + id + " ke " + nextState);
+      bumpVersion();
+      return { status: "success", status_aktif: nextState, message: "Status aktif pengumuman berhasil diubah!" };
+    }
+  }
+  return { status: "error", message: "Pengumuman ID " + id + " tidak ditemukan" };
+}
+
+function handleDeleteAnnouncement(ss, payload) {
+  var sheet = ss.getSheetByName("PENGUMUMAN");
+  if (!sheet) return { status: "error", message: "Sheet PENGUMUMAN tidak ditemukan" };
+  var data = sheet.getDataRange().getValues();
+  var id = String(payload.id_pengumuman || "").trim();
+
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]).trim() === id) {
+      sheet.deleteRow(i + 1);
+      appendLog(ss, payload.petugas || "Bendahara", "Menghapus pengumuman ID " + id);
+      bumpVersion();
+      return { status: "success", message: "Pengumuman berhasil dihapus dari Spreadsheet!" };
+    }
+  }
+  return { status: "error", message: "Pengumuman ID " + id + " tidak ditemukan" };
+}
+
+/**
+ * 11. Handle Upload File ke Google Drive (Menghasilkan URL Publik Langsung)
  */
 function handleUploadFile(payload) {
   try {
@@ -443,17 +737,20 @@ function handleUploadFile(payload) {
     }
 
     var contentType = payload.contentType || "image/jpeg";
-    var base64Data = payload.base64.split(",")[1] || payload.base64;
+    var base64Data = payload.base64.indexOf(",") > -1 ? payload.base64.split(",")[1] : payload.base64;
     var decoded = Utilities.base64Decode(base64Data);
-    var blob = Utilities.newBlob(decoded, contentType, payload.fileName || "bukti_" + new Date().getTime() + ".jpg");
+    var blob = Utilities.newBlob(decoded, contentType, payload.fileName || ("upload_" + new Date().getTime() + ".jpg"));
     var file = folder.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
 
+    var fileId = file.getId();
+    var directPublicUrl = "https://drive.google.com/uc?export=view&id=" + fileId;
+
     return {
       status: "success",
-      fileUrl: file.getUrl(),
-      downloadUrl: file.getDownloadUrl(),
-      id: file.getId()
+      id: fileId,
+      fileUrl: directPublicUrl,
+      directUrl: directPublicUrl
     };
   } catch (err) {
     return { status: "error", message: "Gagal upload Google Drive: " + err.toString() };
@@ -461,75 +758,21 @@ function handleUploadFile(payload) {
 }
 
 /**
- * 9. Handle Verifikasi Status Transaksi (Lunas / Kurang / Cancel)
- */
-function handleVerifyTransaction(ss, payload) {
-  var sheet = ss.getSheetByName("TRANSAKSI");
-  var data = sheet.getDataRange().getValues();
-  var trxId = payload.id_transaksi;
-  var newStatus = payload.status; // 'LUNAS' | 'KURANG' | 'CANCEL'
-  var nominalBayar = payload.nominal_bayar;
-  var sisa = payload.sisa;
-  var reason = payload.alasan_batal || "";
-
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === String(trxId)) {
-      var rowIdx = i + 1;
-      if (nominalBayar !== undefined && nominalBayar !== null) {
-        sheet.getRange(rowIdx, 7).setValue(Number(nominalBayar));
-      }
-      if (sisa !== undefined && sisa !== null) {
-        sheet.getRange(rowIdx, 8).setValue(Number(sisa));
-      }
-      sheet.getRange(rowIdx, 9).setValue(newStatus);
-      if (reason) {
-        sheet.getRange(rowIdx, 11).setValue(reason);
-      }
-
-      appendLog(ss, payload.petugas || "Bendahara", "Verifikasi status transaksi " + trxId + " menjadi " + newStatus + (reason ? " [Alasan: " + reason + "]" : ""));
-      return { status: "success", message: "Transaksi " + trxId + " berhasil diverifikasi menjadi " + newStatus + "!" };
-    }
-  }
-  return { status: "error", message: "ID Transaksi " + trxId + " tidak ditemukan di Sheet TRANSAKSI" };
-}
-
-/**
- * 10. Handle Sinkronisasi Penuh Dua Arah (Sync / Pull / Push)
+ * 12. Handle Sinkronisasi Penuh Dua Arah (Pull & Sync Data)
  */
 function handleSyncAllData(ss, payload) {
   checkAndInitSheets(ss);
 
-  // Jika payload menyertakan data untuk diperbarui ke sheet
-  if (payload && payload.overwrite === true && payload.students && payload.students.length > 0) {
-    var studentSheet = ss.getSheetByName("SISWA");
-    var existingStudents = studentSheet.getDataRange().getValues();
-    // Simpan siswa baru yang belum tercatat
-    var existingNisns = {};
-    for (var i = 1; i < existingStudents.length; i++) {
-      existingNisns[String(existingStudents[i][1])] = true;
-    }
-    for (var s = 0; s < payload.students.length; s++) {
-      var st = payload.students[s];
-      if (!existingNisns[String(st.nisn)]) {
-        studentSheet.appendRow([
-          st.id_siswa, st.nisn, st.nik, st.nama, st.tempat_lahir,
-          st.tanggal_lahir, st.jenis_kelamin, st.kelas, st.nama_wali,
-          st.no_hp, st.alamat, st.foto || "", st.spp_nominal || 500000,
-          st.spp_kategori || "REGULER", st.spp_catatan || ""
-        ]);
-      }
-    }
-  }
-
   return {
     status: "success",
-    message: "Sinkronisasi Google Spreadsheet berhasil!",
+    version: getVersion(),
+    message: "Sinkronisasi data Google Spreadsheet berhasil!",
     data: fetchAllSheetsData()
   };
 }
 
 /**
- * 11. Helper Log
+ * 13. Helper Log
  */
 function appendLog(ss, user, aktivitas) {
   var sheet = ss.getSheetByName("LOG");
@@ -539,3 +782,4 @@ function appendLog(ss, user, aktivitas) {
   }
 }
 `;
+

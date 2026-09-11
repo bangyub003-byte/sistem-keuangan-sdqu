@@ -127,62 +127,66 @@ export const WaliDashboard: React.FC<WaliDashboardProps> = ({
       </div>
 
       {/* Pengumuman & Informasi dari Bendahara Sekolah */}
-      {announcements && announcements.length > 0 && (
-        <div className="bg-white rounded-2xl border border-emerald-200/90 shadow-xs overflow-hidden">
-          <div className="bg-emerald-50/80 px-5 py-3 border-b border-emerald-100 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Bell className="w-4 h-4 text-emerald-700 animate-bounce" />
-                <span className="absolute -top-1 -right-1 w-2 h-2 bg-rose-500 rounded-full"></span>
-              </div>
-              <h3 className="font-bold text-sm text-emerald-950">
-                Informasi & Pengumuman Bendahara Sekolah
-              </h3>
-            </div>
-            <span className="text-[10px] font-bold px-2.5 py-0.5 bg-emerald-700 text-white rounded-full">
-              {announcements.length} Pemberitahuan
-            </span>
-          </div>
-
-          <div className="divide-y divide-slate-100">
-            {announcements.map((ann) => {
-              const annId = ann.id_pengumuman || (ann as any).id;
-              const isPenting = ann.is_penting || (ann as any).priority === 'PENTING';
-              return (
-                <div key={annId} className="p-4 sm:p-5 flex items-start gap-3.5 hover:bg-slate-50/60 transition-colors">
-                  <div className={`p-2 rounded-xl shrink-0 mt-0.5 ${
-                    isPenting
-                      ? 'bg-rose-100 text-rose-700' 
-                      : 'bg-emerald-100 text-emerald-700'
-                  }`}>
-                    {isPenting ? <Megaphone className="w-4 h-4" /> : <Info className="w-4 h-4" />}
-                  </div>
-                <div className="grow min-w-0 space-y-1">
-                  <div className="flex flex-wrap items-center justify-between gap-1">
-                    <h4 className="font-bold text-slate-900 text-xs sm:text-sm">
-                      {ann.judul}
-                    </h4>
-                    <span className="text-[11px] text-slate-400 font-medium">
-                      {new Date(ann.tanggal).toLocaleDateString('id-ID', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric'
-                      })}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line">
-                    {ann.isi}
-                  </p>
-                  <p className="text-[10px] text-slate-400 italic">
-                    Diterbitkan oleh: {ann.penulis || 'Bendahara Sekolah'}
-                  </p>
+      {(() => {
+        const activeAnnouncements = (announcements || []).filter(a => a.status_aktif !== false);
+        if (activeAnnouncements.length === 0) return null;
+        return (
+          <div className="bg-white rounded-2xl border border-emerald-200/90 shadow-xs overflow-hidden">
+            <div className="bg-emerald-50/80 px-5 py-3 border-b border-emerald-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Bell className="w-4 h-4 text-emerald-700 animate-bounce" />
+                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-rose-500 rounded-full"></span>
                 </div>
+                <h3 className="font-bold text-sm text-emerald-950">
+                  Informasi & Pengumuman Bendahara Sekolah
+                </h3>
               </div>
-            );
-          })}
+              <span className="text-[10px] font-bold px-2.5 py-0.5 bg-emerald-700 text-white rounded-full">
+                {activeAnnouncements.length} Pemberitahuan
+              </span>
+            </div>
+
+            <div className="divide-y divide-slate-100">
+              {activeAnnouncements.map((ann) => {
+                const annId = ann.id_pengumuman || (ann as any).id;
+                const isPenting = ann.is_penting || (ann as any).priority === 'PENTING';
+                return (
+                  <div key={annId} className="p-4 sm:p-5 flex items-start gap-3.5 hover:bg-slate-50/60 transition-colors">
+                    <div className={`p-2 rounded-xl shrink-0 mt-0.5 ${
+                      isPenting
+                        ? 'bg-rose-100 text-rose-700' 
+                        : 'bg-emerald-100 text-emerald-700'
+                    }`}>
+                      {isPenting ? <Megaphone className="w-4 h-4" /> : <Info className="w-4 h-4" />}
+                    </div>
+                  <div className="grow min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center justify-between gap-1">
+                      <h4 className="font-bold text-slate-900 text-xs sm:text-sm">
+                        {ann.judul}
+                      </h4>
+                      <span className="text-[11px] text-slate-400 font-medium">
+                        {new Date(ann.tanggal).toLocaleDateString('id-ID', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric'
+                        })}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line">
+                      {ann.isi}
+                    </p>
+                    <p className="text-[10px] text-slate-400 italic">
+                      Diterbitkan oleh: {ann.penulis || 'Bendahara Sekolah'}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Kanal Resmi Pembayaran: Rekening Bank & QRIS */}
       {(setting.no_rekening || setting.qris_image) && (

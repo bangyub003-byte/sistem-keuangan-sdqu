@@ -13,7 +13,7 @@ import { StorageService } from './services/storageService';
 import { NavbarHeader, BendaharaTab } from './components/NavbarHeader';
 import { LoginView } from './components/LoginView';
 import { PrintReportView, PrintMode } from './components/PrintReportView';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, RefreshCw } from 'lucide-react';
 
 // Role Dashboards & Menus
 import { DashboardMenu } from './components/bendahara/DashboardMenu';
@@ -29,13 +29,17 @@ export default function App() {
   // Session & User
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => StorageService.getCurrentUser());
   
-  // App Data
+  // App Data (Initialized from local cache, immediately refreshed from Google Spreadsheet)
   const [students, setStudents] = useState<Student[]>(() => StorageService.getStudents());
   const [transactions, setTransactions] = useState<Transaction[]>(() => StorageService.getTransactions());
   const [keuangan, setKeuangan] = useState<KeuanganRecord[]>(() => StorageService.getKeuangan());
   const [setting, setSetting] = useState<SchoolSetting>(() => StorageService.getSetting());
   const [users, setUsers] = useState<UserAccount[]>(() => StorageService.getUsers());
   const [announcements, setAnnouncements] = useState<Announcement[]>(() => StorageService.getAnnouncements());
+
+  // Version tracking
+  const [dataVersion, setDataVersion] = useState<string>(() => StorageService.getDataVersion());
+  const isFetchingRef = useRef(false);
 
   // Dark Mode State
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
@@ -63,19 +67,6 @@ export default function App() {
     setIsDarkMode(prev => !prev);
   };
 
-  // Announcements Handlers
-  const handleAddAnnouncement = (data: { judul: string; isi: string; is_penting?: boolean }) => {
-    const author = currentUser?.nama || 'Bendahara Sekolah';
-    const newAnn = StorageService.addAnnouncement(data, author);
-    setAnnouncements(prev => [newAnn, ...prev]);
-  };
-
-  const handleDeleteAnnouncement = (id: string) => {
-    const operator = currentUser?.nama || 'Bendahara Sekolah';
-    StorageService.deleteAnnouncement(id, operator);
-    setAnnouncements(prev => prev.filter(a => a.id_pengumuman !== id));
-  };
-
   // Navigation
   const [activeBendaharaTab, setActiveBendaharaTab] = useState<BendaharaTab>('DASHBOARD');
   const [selectedStudentForPayment, setSelectedStudentForPayment] = useState<Student | null>(null);
@@ -95,43 +86,145 @@ export default function App() {
     mode: 'REKAP_PEMBAYARAN'
   });
 
-  // Sync to GAS trigger
-  const triggerGasSync = useCallback(async (
-    updatedStudents?: Student[],
-    updatedTrx?: Transaction[],
-    updatedKeuangan?: KeuanganRecord[],
-    updatedSetting?: SchoolSetting
-  ) => {
-    const curSetting = updatedSetting || setting;
-    if (!curSetting.gas_url) {
-      setSyncStatus('idle');
-      return;
+  /**
+   * Universal pull data function:
+   * Mengambil data terbaru 7 Sheet dari Google Apps Script
+   */
+  const executePullData = useCallback(async (isSilent = false) => {
+    if (!setting.gas_url || isFetchingRef.current) return;
+    
+    isFetchingRef.current = true;
+    if (!isSilent) {
+      setSyncStatus('syncing');
+      setSyncError(null);
     }
 
+    try {
+      const res = await StorageService.pullFromSpreadsheet(setting.gas_url);
+      if (res.success) {
+        if (res.students) setStudents(res.students);
+        if (res.transactions) setTransactions(res.transactions);
+        if (res.keuangan) setKeuangan(res.keuangan);
+        if (res.setting) setSetting(res.setting);
+        if (res.users) setUsers(res.users);
+        if (res.announcements) setAnnouncements(res.announcements);
+        if (res.version) setDataVersion(res.version);
+        setSyncStatus('synced');
+        setSyncError(null);
+      } else if (!isSilent) {
+        setSyncStatus('error');
+        setSyncError(res.message);
+      }
+    } catch (err: any) {
+      if (!isSilent) {
+        setSyncStatus('error');
+        setSyncError(err.message || 'Gagal terhubung ke Google Apps Script');
+      }
+    } finally {
+      isFetchingRef.current = false;
+    }
+  }, [setting.gas_url]);
+
+  /**
+   * SINKRONISASI OTOMATIS:
+   * 1. Saat dashboard dibuka / aplikasi dimuat: langsung ambil data fresh dari Google Apps Script.
+   * 2. Setiap 10 detik: cek DATA_VERSION ke Google Apps Script (endpoint ringan).
+   * 3. Jika DATA_VERSION berubah, otomatis tarik data terbaru tanpa membebani browser.
+   * 4. Saat tab kembali aktif (visibilitychange), langsung cek versi.
+   */
+  useEffect(() => {
+    if (!setting.gas_url) return;
+
+    // 1. Initial fresh fetch on mount
+    executePullData(true);
+
+    // 2. Polling setiap 10 detik
+    const interval = setInterval(async () => {
+      if (isFetchingRef.current) return;
+      try {
+        const vRes = await StorageService.checkVersion(setting.gas_url!);
+        if (vRes.success && vRes.version && vRes.version !== StorageService.getDataVersion()) {
+          console.log(`[Auto-Sync] Versi data berubah dari ${StorageService.getDataVersion()} ke ${vRes.version}, memuat ulang data...`);
+          await executePullData(true);
+        }
+      } catch {
+        // silent polling error
+      }
+    }, 10000);
+
+    // 3. Tab visibility check
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible' && setting.gas_url && !isFetchingRef.current) {
+        try {
+          const vRes = await StorageService.checkVersion(setting.gas_url);
+          if (vRes.success && vRes.version && vRes.version !== StorageService.getDataVersion()) {
+            await executePullData(true);
+          }
+        } catch {
+          // silent
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [setting.gas_url, executePullData]);
+
+  // Announcements Handlers
+  const handleAddAnnouncement = async (data: { judul: string; isi: string; is_penting?: boolean }) => {
+    const author = currentUser?.nama || 'Bendahara Sekolah';
     setSyncStatus('syncing');
-    setSyncError(null);
-
-    const res = await StorageService.syncAllToGAS({
-      students: updatedStudents || students,
-      transactions: updatedTrx || transactions,
-      keuangan: updatedKeuangan || keuangan,
-      setting: curSetting,
-      users
-    });
-
-    if (res.success) {
-      setSyncStatus('synced');
-    } else {
+    const res = await StorageService.addAnnouncement(data, author);
+    setAnnouncements(StorageService.getAnnouncements());
+    if (res.gasResult && res.gasResult.status === 'error') {
       setSyncStatus('error');
-      setSyncError(res.message);
+      setSyncError(res.gasResult.message);
+    } else {
+      setSyncStatus('synced');
+      if (res.gasResult?.version) setDataVersion(res.gasResult.version);
     }
-  }, [setting, students, transactions, keuangan, users]);
+  };
+
+  const handleToggleAnnouncement = async (id: string) => {
+    const operator = currentUser?.nama || 'Bendahara Sekolah';
+    setSyncStatus('syncing');
+    const res = await StorageService.toggleAnnouncement(id, operator);
+    setAnnouncements(StorageService.getAnnouncements());
+    if (res.gasResult && res.gasResult.status === 'error') {
+      setSyncStatus('error');
+      setSyncError(res.gasResult.message);
+    } else {
+      setSyncStatus('synced');
+      if (res.gasResult?.version) setDataVersion(res.gasResult.version);
+    }
+  };
+
+  const handleDeleteAnnouncement = async (id: string) => {
+    const operator = currentUser?.nama || 'Bendahara Sekolah';
+    setSyncStatus('syncing');
+    const res = await StorageService.deleteAnnouncement(id, operator);
+    setAnnouncements(StorageService.getAnnouncements());
+    if (res.gasResult && res.gasResult.status === 'error') {
+      setSyncStatus('error');
+      setSyncError(res.gasResult.message);
+    } else {
+      setSyncStatus('synced');
+      if (res.gasResult?.version) setDataVersion(res.gasResult.version);
+    }
+  };
 
   // Handle Login
   const handleLogin = (user: UserAccount) => {
     setCurrentUser(user);
     StorageService.saveCurrentUser(user);
     setActiveBendaharaTab('DASHBOARD');
+    // Ambil data terbaru saat login
+    if (setting.gas_url) {
+      executePullData(true);
+    }
   };
 
   // Handle Logout
@@ -140,37 +233,25 @@ export default function App() {
     StorageService.saveCurrentUser(null);
   };
 
-  // Manual Sync Button (Sync to Spreadsheet)
-  const handleManualSync = async () => {
-    await triggerGasSync();
-  };
-
-  // Pull All Data directly from Google Spreadsheet
+  // Manual Sync Button (Tarik dari Spreadsheet)
   const handlePullFromSpreadsheet = async () => {
     if (!setting.gas_url) {
       alert('URL Web App Google Apps Script belum diatur di menu Pengaturan.');
       return;
     }
-
     setSyncStatus('syncing');
     setSyncError(null);
-
     const res = await StorageService.pullFromSpreadsheet(setting.gas_url);
     if (res.success) {
-      if (res.students && res.students.length > 0) {
-        setStudents(res.students);
-        StorageService.saveStudents(res.students);
-      }
-      if (res.transactions && res.transactions.length > 0) {
-        setTransactions(res.transactions);
-        StorageService.saveTransactions(res.transactions);
-      }
-      if (res.keuangan && res.keuangan.length > 0) {
-        setKeuangan(res.keuangan);
-        StorageService.saveKeuangan(res.keuangan);
-      }
+      if (res.students) setStudents(res.students);
+      if (res.transactions) setTransactions(res.transactions);
+      if (res.keuangan) setKeuangan(res.keuangan);
+      if (res.setting) setSetting(res.setting);
+      if (res.users) setUsers(res.users);
+      if (res.announcements) setAnnouncements(res.announcements);
+      if (res.version) setDataVersion(res.version);
       setSyncStatus('synced');
-      alert(`Sinkronisasi Berhasil!\nData terbaru berhasil ditarik dari Google Spreadsheet:\n- ${res.students?.length || 0} Data Santri\n- ${res.transactions?.length || 0} Data Transaksi\n- ${res.keuangan?.length || 0} Data Keuangan`);
+      alert(`Sinkronisasi Berhasil!\nData terbaru berhasil ditarik dari Google Spreadsheet:\n- ${res.students?.length || 0} Data Santri\n- ${res.transactions?.length || 0} Data Transaksi\n- ${res.keuangan?.length || 0} Data Kas`);
     } else {
       setSyncStatus('error');
       setSyncError(res.message);
@@ -178,173 +259,183 @@ export default function App() {
     }
   };
 
-  const pullSilently = useCallback(async () => {
-  if (!setting.gas_url) return;
-
-  const res = await StorageService.pullFromSpreadsheet(setting.gas_url);
-
-  if (res.success) {
-    if (res.students) {
-      setStudents(res.students);
-      StorageService.saveStudents(res.students);
-    }
-
-    if (res.transactions) {
-      setTransactions(res.transactions);
-      StorageService.saveTransactions(res.transactions);
-    }
-
-    if (res.keuangan) {
-      setKeuangan(res.keuangan);
-      StorageService.saveKeuangan(res.keuangan);
-    }
-
-    if (res.setting) {
-      setSetting(res.setting);
-    }
-  }
-}, [setting.gas_url]);
-
-
-const lastVersionRef = useRef<string | null>(null);
-
-
-useEffect(() => {
-  if (!currentUser || !setting.gas_url) return;
-
-  let cancelled = false;
-
-  const checkAndSync = async () => {
-    const remoteVersion = await StorageService.getRemoteVersion(setting.gas_url);
-
-    if (cancelled || !remoteVersion) return;
-
-    if (lastVersionRef.current !== remoteVersion) {
-      lastVersionRef.current = remoteVersion;
-      await pullSilently();
+  // Student CRUD Operations
+  const handleAddStudent = async (newStudentData: Omit<Student, 'id_siswa'>) => {
+    setSyncStatus('syncing');
+    setSyncError(null);
+    const res = await StorageService.addStudent(newStudentData, currentUser?.nama || 'Bendahara');
+    setStudents(StorageService.getStudents());
+    setUsers(StorageService.getUsers());
+    if (res.gasResult && res.gasResult.status === 'error') {
+      setSyncStatus('error');
+      setSyncError(res.gasResult.message);
+    } else {
+      setSyncStatus('synced');
+      if (res.gasResult?.version) setDataVersion(res.gasResult.version);
     }
   };
 
-  checkAndSync();
-
-  const interval = setInterval(checkAndSync, 15000);
-
-  const onVisible = () => {
-    if (document.visibilityState === 'visible') {
-      checkAndSync();
+  const handleUpdateStudent = async (updatedStudent: Student) => {
+    setSyncStatus('syncing');
+    setSyncError(null);
+    const res = await StorageService.updateStudent(updatedStudent, currentUser?.nama || 'Bendahara');
+    setStudents(StorageService.getStudents());
+    if (res.gasResult && res.gasResult.status === 'error') {
+      setSyncStatus('error');
+      setSyncError(res.gasResult.message);
+    } else {
+      setSyncStatus('synced');
+      if (res.gasResult?.version) setDataVersion(res.gasResult.version);
     }
   };
 
-  document.addEventListener('visibilitychange', onVisible);
-
-  return () => {
-    cancelled = true;
-    clearInterval(interval);
-    document.removeEventListener('visibilitychange', onVisible);
+  const handleDeleteStudent = async (id_siswa: string) => {
+    setSyncStatus('syncing');
+    setSyncError(null);
+    const res = await StorageService.deleteStudent(id_siswa, currentUser?.nama || 'Bendahara');
+    setStudents(StorageService.getStudents());
+    setUsers(StorageService.getUsers());
+    if (res.gasResult && res.gasResult.status === 'error') {
+      setSyncStatus('error');
+      setSyncError(res.gasResult.message);
+    } else {
+      setSyncStatus('synced');
+      if (res.gasResult?.version) setDataVersion(res.gasResult.version);
+    }
   };
 
-}, [currentUser, setting.gas_url, pullSilently]);
- // SISWA
-const handleAddStudent = (newStudentData: Omit<Student, 'id_siswa'>) => {
-  StorageService.addStudent(newStudentData, currentUser?.nama || 'Bendahara');
-  setStudents(StorageService.getStudents());
-  setUsers(StorageService.getUsers());
-};
-
-const handleUpdateStudent = (updatedStudent: Student) => {
-  StorageService.updateStudent(updatedStudent, currentUser?.nama || 'Bendahara');
-  setStudents(StorageService.getStudents());
-};
-
-const handleDeleteStudent = (id_siswa: string) => {
-  StorageService.deleteStudent(id_siswa, currentUser?.nama || 'Bendahara');
-  setStudents(StorageService.getStudents());
-  setUsers(StorageService.getUsers());
-};
-
-  const handleImportStudents = (newStudents: Student[]) => {
-    const updated = [...students, ...newStudents];
-    setStudents(updated);
-    StorageService.saveStudents(updated);
-
-    // Register wali accounts for imported students
-    const newWaliUsers: UserAccount[] = newStudents.map(st => ({
-      id_user: 'U_WALI_' + st.nisn,
-      username: st.nisn,
-      password: st.nisn,
-      nama: st.nama_wali || `Wali dari ${st.nama}`,
-      role: 'WALI',
-      nisn: st.nisn
-    }));
-    const updatedUsers = [...users, ...newWaliUsers];
-    setUsers(updatedUsers);
-    StorageService.saveUsers(updatedUsers);
-
-    triggerGasSync(updated);
+  const handleImportStudents = async (newStudentsList: Student[]) => {
+    setSyncStatus('syncing');
+    setSyncError(null);
+    const res = await StorageService.bulkImportStudents(newStudentsList, currentUser?.nama || 'Bendahara');
+    setStudents(StorageService.getStudents());
+    setUsers(StorageService.getUsers());
+    if (res.gasResult && res.gasResult.status === 'error') {
+      setSyncStatus('error');
+      setSyncError(res.gasResult.message);
+    } else {
+      setSyncStatus('synced');
+      if (res.gasResult?.version) setDataVersion(res.gasResult.version);
+    }
   };
 
-  // PEMBAYARAN
-const handleProcessPayment = (data: Omit<Transaction, 'id_transaksi'>) => {
-  const newTrx = StorageService.processPayment(data);
-  setTransactions(StorageService.getTransactions());
-  setKeuangan(StorageService.getKeuangan());
-  return newTrx;
-};
+  // Payment Operations
+  const handleProcessPayment = (data: {
+    nisn: string;
+    nama_siswa: string;
+    kelas: string;
+    jenis: string;
+    kategori: string;
+    bulan?: string;
+    nominal_tagihan: number;
+    nominal_bayar: number;
+    status: 'LUNAS' | 'KURANG';
+    petugas: string;
+    keterangan?: string;
+  }): Transaction => {
+    setSyncStatus('syncing');
+    setSyncError(null);
 
-const handleCancelPayment = (trxId: string, reason: string) => {
-  StorageService.cancelPayment(trxId, reason, currentUser?.nama || 'Bendahara');
-  setTransactions(StorageService.getTransactions());
-};
+    // Call asynchronous StorageService to execute single pipeline
+    StorageService.processPayment(data).then(res => {
+      setTransactions(StorageService.getTransactions());
+      setKeuangan(StorageService.getKeuangan());
+      if (res.gasResult && res.gasResult.status === 'error') {
+        setSyncStatus('error');
+        setSyncError(res.gasResult.message);
+      } else {
+        setSyncStatus('synced');
+        if (res.gasResult?.version) setDataVersion(res.gasResult.version);
+      }
+    });
 
-  // Verifikasi Pembayaran Murid (Lunas, Kurang Bayar, atau Cancel yang sudah terlanjur)
-  const handleVerifyPaymentStatus = (
+    // Immediate reactive state update for UI responsiveness
+    const curTrx = StorageService.getTransactions();
+    const curK = StorageService.getKeuangan();
+    setTransactions(curTrx);
+    setKeuangan(curK);
+
+    return curTrx[0] || ({
+      id_transaksi: `TRX-${Date.now()}`,
+      tanggal: new Date().toISOString().slice(0, 10),
+      nisn: data.nisn,
+      nama_siswa: data.nama_siswa,
+      kelas: data.kelas,
+      jenis: data.jenis,
+      kategori: data.kategori,
+      bulan: data.bulan,
+      nominal_tagihan: data.nominal_tagihan,
+      nominal_bayar: data.nominal_bayar,
+      sisa: Math.max(0, data.nominal_tagihan - data.nominal_bayar),
+      status: data.status,
+      petugas: data.petugas,
+      keterangan: data.keterangan
+    });
+  };
+
+  // Cancel Payment
+  const handleCancelPayment = async (trxId: string, reason: string) => {
+    setSyncStatus('syncing');
+    setSyncError(null);
+    const res = await StorageService.cancelPayment(trxId, reason, currentUser?.nama || 'Bendahara');
+    setTransactions(StorageService.getTransactions());
+    if (res.gasResult && res.gasResult.status === 'error') {
+      setSyncStatus('error');
+      setSyncError(res.gasResult.message);
+    } else {
+      setSyncStatus('synced');
+      if (res.gasResult?.version) setDataVersion(res.gasResult.version);
+    }
+  };
+
+  // Verify Payment Status
+  const handleVerifyPaymentStatus = async (
     trxId: string,
     newStatus: 'LUNAS' | 'KURANG' | 'CANCEL',
     paidAmount?: number,
     reason?: string
   ) => {
-    const updated = transactions.map(t => {
-      if (t.id_transaksi === trxId) {
-        const tagihan = t.nominal_tagihan || 0;
-        let bayar = paidAmount !== undefined ? paidAmount : t.nominal_bayar;
-        if (newStatus === 'LUNAS') {
-          bayar = tagihan;
-        }
-        const sisa = Math.max(0, tagihan - bayar);
-        return {
-          ...t,
-          status: newStatus,
-          nominal_bayar: bayar,
-          sisa: newStatus === 'LUNAS' ? 0 : sisa,
-          alasan_batal: newStatus === 'CANCEL' ? (reason || 'Dibatalkan oleh Bendahara') : undefined
-        };
-      }
-      return t;
-    });
-
-    setTransactions(updated);
-    StorageService.saveTransactions(updated);
-
-    StorageService.addLog(
-      currentUser?.nama || 'Bendahara',
-      `Verifikasi status transaksi ${trxId} menjadi ${newStatus}${reason ? ' [Alasan: ' + reason + ']' : ''}`
-    );
-
-    // Otomatis tersimpan ke Google Spreadsheet backend
-    triggerGasSync(undefined, updated);
+    setSyncStatus('syncing');
+    setSyncError(null);
+    const res = await StorageService.verifyTransaction(trxId, newStatus, paidAmount, reason, currentUser?.nama || 'Bendahara');
+    setTransactions(StorageService.getTransactions());
+    if (res.gasResult && res.gasResult.status === 'error') {
+      setSyncStatus('error');
+      setSyncError(res.gasResult.message);
+    } else {
+      setSyncStatus('synced');
+      if (res.gasResult?.version) setDataVersion(res.gasResult.version);
+    }
   };
 
-  // KEUANGAN
-const handleAddKeuangan = (rec: Omit<KeuanganRecord, 'id_keuangan'>) => {
-  StorageService.addKeuangan(rec, currentUser?.nama || 'Bendahara');
-  setKeuangan(StorageService.getKeuangan());
-};
+  // Keuangan Add
+  const handleAddKeuangan = async (rec: Omit<KeuanganRecord, 'id_keuangan'>) => {
+    setSyncStatus('syncing');
+    setSyncError(null);
+    const res = await StorageService.addKeuangan(rec, currentUser?.nama || 'Bendahara');
+    setKeuangan(StorageService.getKeuangan());
+    if (res.gasResult && res.gasResult.status === 'error') {
+      setSyncStatus('error');
+      setSyncError(res.gasResult.message);
+    } else {
+      setSyncStatus('synced');
+      if (res.gasResult?.version) setDataVersion(res.gasResult.version);
+    }
+  };
 
   // Save Settings
-  const handleSaveSetting = (newSetting: SchoolSetting) => {
+  const handleSaveSetting = async (newSetting: SchoolSetting) => {
     setSetting(newSetting);
-    StorageService.saveSetting(newSetting);
-    triggerGasSync(undefined, undefined, undefined, newSetting);
+    setSyncStatus('syncing');
+    setSyncError(null);
+    const res = await StorageService.saveSetting(newSetting, currentUser?.nama || 'Bendahara');
+    if (res.gasResult && res.gasResult.status === 'error') {
+      setSyncStatus('error');
+      setSyncError(res.gasResult.message);
+    } else {
+      setSyncStatus('synced');
+      if (res.gasResult?.version) setDataVersion(res.gasResult.version);
+    }
   };
 
   // Reset Demo Data
@@ -355,6 +446,8 @@ const handleAddKeuangan = (rec: Omit<KeuanganRecord, 'id_keuangan'>) => {
     setKeuangan(StorageService.getKeuangan());
     setSetting(StorageService.getSetting());
     setUsers(StorageService.getUsers());
+    setAnnouncements(StorageService.getAnnouncements());
+    setDataVersion('');
   };
 
   // Print Handlers
@@ -382,7 +475,7 @@ const handleAddKeuangan = (rec: Omit<KeuanganRecord, 'id_keuangan'>) => {
     });
   };
 
-  // Student linked to logged-in Wali: ONLY match exact NISN or id_siswa, NEVER fall back to another student
+  // Student linked to logged-in Wali
   const currentWaliStudent = currentUser?.role === 'WALI'
     ? (students || []).find(s => {
         const userNisn = (currentUser.nisn || currentUser.username || '').toLowerCase().trim();
@@ -407,7 +500,7 @@ const handleAddKeuangan = (rec: Omit<KeuanganRecord, 'id_keuangan'>) => {
             activeTab={activeBendaharaTab}
             syncStatus={syncStatus}
             isDarkMode={isDarkMode}
-            announcementCount={announcements.length}
+            announcementCount={announcements.filter(a => a.status_aktif !== false).length}
             onToggleDarkMode={handleToggleDarkMode}
             onTabChange={setActiveBendaharaTab}
             onLogout={handleLogout}
@@ -498,6 +591,7 @@ const handleAddKeuangan = (rec: Omit<KeuanganRecord, 'id_keuangan'>) => {
                     onResetData={handleResetData}
                     onPullFromSpreadsheet={handlePullFromSpreadsheet}
                     onAddAnnouncement={handleAddAnnouncement}
+                    onToggleAnnouncement={handleToggleAnnouncement}
                     onDeleteAnnouncement={handleDeleteAnnouncement}
                   />
                 )}
