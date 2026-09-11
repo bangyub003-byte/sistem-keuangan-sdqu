@@ -218,7 +218,7 @@ const handleDeleteStudent = (id_siswa: string) => {
   };
 
   // PEMBAYARAN
-const handleProcessPayment = (data: {...}) => {
+const handleProcessPayment = (data: Omit<Transaction, 'id_transaksi'>) => {
   const newTrx = StorageService.processPayment(data);
   setTransactions(StorageService.getTransactions());
   setKeuangan(StorageService.getKeuangan());
