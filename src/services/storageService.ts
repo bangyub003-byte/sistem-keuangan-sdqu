@@ -318,6 +318,31 @@ export class StorageService {
     }
   }
 
+  // storageService.ts — method baru
+static async verifyPayment(
+  trxId: string,
+  newStatus: 'LUNAS' | 'KURANG' | 'CANCEL',
+  paidAmount: number,
+  sisa: number,
+  reason: string | undefined,
+  operator: string
+) {
+  const transactions = this.getTransactions();
+  const updated = transactions.map(t => t.id_transaksi === trxId
+    ? { ...t, status: newStatus, nominal_bayar: paidAmount, sisa, alasan_batal: reason }
+    : t
+  );
+  this.saveTransactions(updated);
+  this.addLog(operator, `Verifikasi status transaksi ${trxId} menjadi ${newStatus}`);
+
+  const setting = this.getSetting();
+  if (setting.gas_url) {
+    return this.callGasApi(setting.gas_url, "VERIFY_TRANSACTION", {
+      id_transaksi: trxId, status: newStatus,
+      nominal_bayar: paidAmount, sisa, alasan_batal: reason, petugas: operator
+    });
+  }
+}
   static addKeuangan(record: Omit<KeuanganRecord, 'id_keuangan'>, operator: string): KeuanganRecord {
     const keuangan = this.getKeuangan();
     const newRec: KeuanganRecord = {
