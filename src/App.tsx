@@ -178,53 +178,23 @@ export default function App() {
     }
   };
 
-  // Student CRUD Operations
-  const handleAddStudent = (newStudentData: Omit<Student, 'id_siswa'>) => {
-    const newStudent: Student = {
-      ...newStudentData,
-      id_siswa: 'S' + Date.now().toString().slice(-5)
-    };
-    const updated = [newStudent, ...students];
-    setStudents(updated);
-    StorageService.saveStudents(updated);
+ // SISWA
+const handleAddStudent = (newStudentData: Omit<Student, 'id_siswa'>) => {
+  StorageService.addStudent(newStudentData, currentUser?.nama || 'Bendahara');
+  setStudents(StorageService.getStudents());
+  setUsers(StorageService.getUsers());
+};
 
-    // Also create or link a Wali user account so they can login immediately with their NISN!
-    const newWaliAccount: UserAccount = {
-      id_user: 'U_WALI_' + newStudent.nisn,
-      username: newStudent.nisn,
-      password: newStudent.nisn,
-      nama: newStudent.nama_wali || `Wali dari ${newStudent.nama}`,
-      role: 'WALI',
-      nisn: newStudent.nisn
-    };
-    const updatedUsers = [...users.filter(u => u.nisn !== newStudent.nisn), newWaliAccount];
-    setUsers(updatedUsers);
-    StorageService.saveUsers(updatedUsers);
+const handleUpdateStudent = (updatedStudent: Student) => {
+  StorageService.updateStudent(updatedStudent, currentUser?.nama || 'Bendahara');
+  setStudents(StorageService.getStudents());
+};
 
-    triggerGasSync(updated);
-  };
-
-  const handleUpdateStudent = (updatedStudent: Student) => {
-    const updated = students.map(s => s.id_siswa === updatedStudent.id_siswa ? updatedStudent : s);
-    setStudents(updated);
-    StorageService.saveStudents(updated);
-    triggerGasSync(updated);
-  };
-
-  const handleDeleteStudent = (id_siswa: string) => {
-    const target = (students || []).find(s => s.id_siswa === id_siswa);
-    const updated = (students || []).filter(s => s.id_siswa !== id_siswa);
-    setStudents(updated);
-    StorageService.saveStudents(updated);
-
-    if (target) {
-      const updatedUsers = (users || []).filter(u => u.nisn !== target.nisn);
-      setUsers(updatedUsers);
-      StorageService.saveUsers(updatedUsers);
-    }
-
-    triggerGasSync(updated);
-  };
+const handleDeleteStudent = (id_siswa: string) => {
+  StorageService.deleteStudent(id_siswa, currentUser?.nama || 'Bendahara');
+  setStudents(StorageService.getStudents());
+  setUsers(StorageService.getUsers());
+};
 
   const handleImportStudents = (newStudents: Student[]) => {
     const updated = [...students, ...newStudents];
@@ -247,81 +217,18 @@ export default function App() {
     triggerGasSync(updated);
   };
 
-  // Payment Operations
-  const handleProcessPayment = (data: {
-    nisn: string;
-    nama_siswa: string;
-    kelas: string;
-    jenis: string;
-    kategori: string;
-    bulan?: string;
-    nominal_tagihan: number;
-    nominal_bayar: number;
-    status: 'LUNAS' | 'KURANG';
-    petugas: string;
-    keterangan?: string;
-  }): Transaction => {
-    const now = new Date();
-    const dateStr = now.toISOString().slice(0, 10);
-    const sisa = Math.max(0, data.nominal_tagihan - data.nominal_bayar);
+  // PEMBAYARAN
+const handleProcessPayment = (data: {...}) => {
+  const newTrx = StorageService.processPayment(data);
+  setTransactions(StorageService.getTransactions());
+  setKeuangan(StorageService.getKeuangan());
+  return newTrx;
+};
 
-    const newTrx: Transaction = {
-      id_transaksi: 'TRX-' + now.getFullYear() + (now.getMonth() + 1).toString().padStart(2, '0') + '-' + Math.floor(1000 + Math.random() * 9000),
-      tanggal: dateStr,
-      nisn: data.nisn,
-      nama_siswa: data.nama_siswa,
-      kelas: data.kelas,
-      jenis: data.jenis,
-      kategori: data.kategori,
-      bulan: data.bulan,
-      nominal_tagihan: data.nominal_tagihan,
-      nominal_bayar: data.nominal_bayar,
-      sisa: sisa,
-      status: data.status,
-      petugas: data.petugas,
-      keterangan: data.keterangan
-    };
-
-    const updatedTrx = [newTrx, ...transactions];
-    setTransactions(updatedTrx);
-    StorageService.saveTransactions(updatedTrx);
-
-    // Also mirror to KEUANGAN Sheet as Pemasukan automatically!
-    const mirroredKeuangan: KeuanganRecord = {
-      id_keuangan: 'K' + Date.now().toString().slice(-6),
-      tanggal: dateStr,
-      jenis: 'MASUK',
-      kategori: 'SPP',
-      nominal: data.nominal_bayar,
-      keterangan: `${data.jenis} ${data.bulan || ''} a.n ${data.nama_siswa} (${data.kelas})`,
-      petugas: data.petugas
-    };
-    const updatedKeuangan = [mirroredKeuangan, ...keuangan];
-    setKeuangan(updatedKeuangan);
-    StorageService.saveKeuangan(updatedKeuangan);
-
-    triggerGasSync(undefined, updatedTrx, updatedKeuangan);
-
-    return newTrx;
-  };
-
-  // Cancel Payment (Salah Transaksi with Reason)
-  const handleCancelPayment = (trxId: string, reason: string) => {
-    const updated = transactions.map(t => {
-      if (t.id_transaksi === trxId) {
-        return {
-          ...t,
-          status: 'CANCEL' as const,
-          alasan_batal: reason
-        };
-      }
-      return t;
-    });
-
-    setTransactions(updated);
-    StorageService.saveTransactions(updated);
-    triggerGasSync(undefined, updated);
-  };
+const handleCancelPayment = (trxId: string, reason: string) => {
+  StorageService.cancelPayment(trxId, reason, currentUser?.nama || 'Bendahara');
+  setTransactions(StorageService.getTransactions());
+};
 
   // Verifikasi Pembayaran Murid (Lunas, Kurang Bayar, atau Cancel yang sudah terlanjur)
   const handleVerifyPaymentStatus = (
@@ -361,17 +268,11 @@ export default function App() {
     triggerGasSync(undefined, updated);
   };
 
-  // Keuangan Add
-  const handleAddKeuangan = (rec: Omit<KeuanganRecord, 'id_keuangan'>) => {
-    const newRec: KeuanganRecord = {
-      ...rec,
-      id_keuangan: 'K' + Date.now().toString().slice(-6)
-    };
-    const updated = [newRec, ...keuangan];
-    setKeuangan(updated);
-    StorageService.saveKeuangan(updated);
-    triggerGasSync(undefined, undefined, updated);
-  };
+  // KEUANGAN
+const handleAddKeuangan = (rec: Omit<KeuanganRecord, 'id_keuangan'>) => {
+  StorageService.addKeuangan(rec, currentUser?.nama || 'Bendahara');
+  setKeuangan(StorageService.getKeuangan());
+};
 
   // Save Settings
   const handleSaveSetting = (newSetting: SchoolSetting) => {
