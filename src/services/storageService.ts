@@ -12,7 +12,8 @@ const STORAGE_KEYS = {
   CURRENT_USER: 'sdq_current_user_v1',
   ANNOUNCEMENTS: 'sdq_announcements_v1',
   DATA_VERSION: 'sdq_data_version_v1',
-  KATEGORI_DANA: 'sdq_kategori_dana_v1'
+  KATEGORI_DANA: 'sdq_kategori_dana_v1',
+  APP_BUILD_VERSION: 'sdq_app_build_version_v1'
 };
 
 /**
@@ -39,7 +40,7 @@ export function formatDriveUrl(url?: string): string {
 }
 
 export class StorageService {
-  // --- Version Tracking ---
+  // --- Version Tracking (Data Spreadsheet & Frontend Build) ---
   static getDataVersion(): string {
     return localStorage.getItem(STORAGE_KEYS.DATA_VERSION) || '';
   }
@@ -47,6 +48,24 @@ export class StorageService {
   static setDataVersion(version: string) {
     if (version) {
       localStorage.setItem(STORAGE_KEYS.DATA_VERSION, String(version));
+    }
+  }
+
+  static getAppBuildVersion(): string {
+    try {
+      return localStorage.getItem(STORAGE_KEYS.APP_BUILD_VERSION) || '';
+    } catch {
+      return '';
+    }
+  }
+
+  static setAppBuildVersion(version: string) {
+    try {
+      if (version) {
+        localStorage.setItem(STORAGE_KEYS.APP_BUILD_VERSION, String(version));
+      }
+    } catch {
+      // silent
     }
   }
 

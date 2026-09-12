@@ -9,7 +9,18 @@
  * URL Web App atau ID Spreadsheet di menu Pengaturan.
  */
 
+/**
+ * VERSI BUILD FRONTEND:
+ * Timestamp versi deployment kode frontend (format: "YYYY-MM-DD-HHmm").
+ * Update konstanta ini setiap kali Anda merilis perubahan frontend penting.
+ * Sistem akan membandingkan nilai ini dengan versi di localStorage setiap
+ * pengunjung. Jika berbeda, browser akan otomatis me-reload halaman SEKALI
+ * dengan cache-bypass sehingga pengguna langsung menerima kode terbaru.
+ */
+export const APP_BUILD_VERSION = "2026-09-12-2220";
+
 export const APP_CONFIG = {
+  BUILD_VERSION: APP_BUILD_VERSION,
   NAMA_SEKOLAH: "SD Qur'an Unggulan Al-I'tisham Playen",
   TAHUN_AJARAN: "2026/2027",
 

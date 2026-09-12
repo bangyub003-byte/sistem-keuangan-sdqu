@@ -11,6 +11,8 @@ import {
   KategoriDana
 } from './types';
 import { StorageService } from './services/storageService';
+import { checkFrontendBuildVersion } from './utils/versionCheck';
+import { APP_BUILD_VERSION } from './config';
 import { NavbarHeader, BendaharaTab } from './components/NavbarHeader';
 import { LoginView } from './components/LoginView';
 import { PrintReportView, PrintMode } from './components/PrintReportView';
@@ -127,6 +129,16 @@ export default function App() {
       isFetchingRef.current = false;
     }
   }, [setting.gas_url]);
+
+  /**
+   * DETEKSI VERSI FRONTEND (AUTO CACHE-BUSTER):
+   * Membandingkan APP_BUILD_VERSION dengan versi yang tersimpan di localStorage.
+   * Jika terdeteksi versi baru yang ter-deploy, browser akan otomatis reload SEKALI
+   * dengan query cache buster sehingga pengguna tidak perlu hapus cache manual.
+   */
+  useEffect(() => {
+    checkFrontendBuildVersion();
+  }, []);
 
   /**
    * SINKRONISASI OTOMATIS:
