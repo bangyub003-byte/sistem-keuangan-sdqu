@@ -546,26 +546,40 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
         )}
 
         {/* TANDA TANGAN RESMI */}
-        <div className="print-break-inside-avoid mt-8 pt-4 border-t border-slate-200 grid grid-cols-2 text-xs sm:text-sm text-center">
-          <div>
-            <p className="text-slate-600 mb-1">Mengetahui,</p>
-            <p className="font-bold text-slate-800">Kepala Sekolah</p>
-            <div className="h-16 flex items-center justify-center">
-              <span className="text-[10px] text-slate-300 italic">[Tanda Tangan & Cap Lembaga]</span>
+        {mode === 'KUITANSI_TRANSAKSI' || mode === 'KUITANSI' ? (
+          <div className="print-break-inside-avoid mt-8 pt-4 border-t border-slate-200 flex justify-end text-xs sm:text-sm text-center">
+            <div className="w-64">
+              <p className="text-slate-600 mb-1">Playen, {currentDate}</p>
+              <p className="font-bold text-slate-800">Bendahara Sekolah</p>
+              <div className="h-16 flex items-center justify-center">
+                <span className="text-[10px] text-slate-300 italic">[Tanda Tangan Petugas Keuangan]</span>
+              </div>
+              <p className="font-bold text-slate-900 underline">{setting.nama_bendahara}</p>
+              <p className="text-[11px] text-slate-500">NIPY. 19880922 201203 2 011</p>
             </div>
-            <p className="font-bold text-slate-900 underline">{setting.nama_kepsek}</p>
-            <p className="text-[11px] text-slate-500">NIPY. 19820514 201001 1 004</p>
           </div>
-          <div>
-            <p className="text-slate-600 mb-1">Playen, {currentDate}</p>
-            <p className="font-bold text-slate-800">Bendahara Sekolah</p>
-            <div className="h-16 flex items-center justify-center">
-              <span className="text-[10px] text-slate-300 italic">[Tanda Tangan Petugas Keuangan]</span>
+        ) : (
+          <div className="print-break-inside-avoid mt-8 pt-4 border-t border-slate-200 grid grid-cols-2 text-xs sm:text-sm text-center">
+            <div>
+              <p className="text-slate-600 mb-1">Mengetahui,</p>
+              <p className="font-bold text-slate-800">Kepala Sekolah</p>
+              <div className="h-16 flex items-center justify-center">
+                <span className="text-[10px] text-slate-300 italic">[Tanda Tangan & Cap Lembaga]</span>
+              </div>
+              <p className="font-bold text-slate-900 underline">{setting.nama_kepsek}</p>
+              <p className="text-[11px] text-slate-500">NIPY. 19820514 201001 1 004</p>
             </div>
-            <p className="font-bold text-slate-900 underline">{setting.nama_bendahara}</p>
-            <p className="text-[11px] text-slate-500">NIPY. 19880922 201203 2 011</p>
+            <div>
+              <p className="text-slate-600 mb-1">Playen, {currentDate}</p>
+              <p className="font-bold text-slate-800">Bendahara Sekolah</p>
+              <div className="h-16 flex items-center justify-center">
+                <span className="text-[10px] text-slate-300 italic">[Tanda Tangan Petugas Keuangan]</span>
+              </div>
+              <p className="font-bold text-slate-900 underline">{setting.nama_bendahara}</p>
+              <p className="text-[11px] text-slate-500">NIPY. 19880922 201203 2 011</p>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Footer Note */}
         <div className="mt-8 pt-3 border-t border-dotted border-slate-300 flex justify-between items-center text-[10px] text-slate-400">

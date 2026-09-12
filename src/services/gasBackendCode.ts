@@ -47,6 +47,138 @@ function onEdit(e) {
 }
 
 /**
+ * Handler installable trigger saat ada perubahan pada spreadsheet
+ */
+function onEditTrigger(e) {
+  try {
+    bumpVersion();
+    Logger.log("onEditTrigger: bumpVersion berhasil dipicu oleh perubahan di Spreadsheet.");
+  } catch (err) {
+    Logger.log("Gagal bumpVersion pada onEditTrigger: " + err.toString());
+  }
+}
+
+/**
+ * Memasang installable trigger onEdit jika belum ada
+ */
+function setupInstallableTrigger() {
+  try {
+    var triggers = ScriptApp.getProjectTriggers();
+    var exists = false;
+    for (var i = 0; i < triggers.length; i++) {
+      if (triggers[i].getHandlerFunction() === "onEditTrigger") {
+        exists = true;
+        break;
+      }
+    }
+    if (!exists) {
+      var ss = getSpreadsheet();
+      ScriptApp.newTrigger("onEditTrigger")
+        .forSpreadsheet(ss)
+        .onEdit()
+        .create();
+      Logger.log("Installable trigger onEditTrigger berhasil dibuat.");
+    }
+  } catch (e) {
+    Logger.log("Peringatan saat setup trigger: " + e.toString());
+  }
+}
+
+/**
+ * Fungsi Perbaikan Otomatis Seluruh Header Sheet (Baris 1) & Sinkronisasi Trigger
+ * Dapat dipanggil dari antarmuka Apps Script editor tanpa menghapus data yang ada.
+ */
+function perbaikiSemuaHeader() {
+  var ss = getSpreadsheet();
+  var requiredSheets = {
+    "USER": ["id_user", "username", "password", "nama", "role", "id_siswa", "nisn"],
+    "SISWA": ["id_siswa", "nisn", "nik", "nama", "tempat_lahir", "tanggal_lahir", "jenis_kelamin", "kelas", "nama_wali", "no_hp", "alamat", "foto", "spp_nominal", "spp_kategori", "spp_catatan", "status_aktif"],
+    "TRANSAKSI": ["id_transaksi", "tanggal", "nisn", "nama_siswa", "kelas", "jenis", "kategori", "bulan", "nominal_tagihan", "nominal_bayar", "sisa", "status", "petugas", "keterangan", "alasan_batal"],
+    "KEUANGAN": ["id_keuangan", "tanggal", "jenis", "kategori", "nominal", "keterangan", "bukti", "petugas", "status", "alasan_batal", "id_kategori"],
+    "SETTING": ["nama_sekolah", "logo", "alamat", "no_wa", "kop_surat", "tahun_ajaran", "nama_kepsek", "nama_bendahara", "spp_default_nominal", "nama_bank", "no_rekening", "atas_nama_rekening", "qris_image"],
+    "PENGUMUMAN": ["id_pengumuman", "tanggal", "judul", "isi", "penulis", "is_penting", "status_aktif"],
+    "KATEGORI_DANA": ["id_kategori", "nama_kategori", "keterangan", "status_aktif"],
+    "LOG": ["tanggal", "user", "aktivitas"]
+  };
+
+  var report = [];
+
+  for (var sheetName in requiredSheets) {
+    var sheet = ss.getSheetByName(sheetName);
+    var expectedHeaders = requiredSheets[sheetName];
+
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+      sheet.appendRow(expectedHeaders);
+      var headerRange = sheet.getRange(1, 1, 1, expectedHeaders.length);
+      headerRange.setFontWeight("bold").setBackground("#047857").setFontColor("#FFFFFF");
+      report.push("Sheet dibuat: " + sheetName);
+
+      if (sheetName === "USER") {
+        sheet.appendRow(["USR-001", "bendahara", "123", "Usth. Nur Khasanah (Bendahara)", "BENDAHARA", "", ""]);
+        sheet.appendRow(["USR-002", "kepsek", "123", "Ust. H. Ahmad Mufid (Kepala Sekolah)", "KEPSEK", "", ""]);
+      } else if (sheetName === "KATEGORI_DANA") {
+        var defaultKategori = [
+          ["KAT-SPP", "SPP", "Dana penerimaan syahriah / SPP bulanan santri", true],
+          ["KAT-DONASI", "Donasi & Infaq", "Penerimaan donasi, infaq, dan sedekah", true],
+          ["KAT-TABUNGAN", "Tabungan Siswa", "Titipan tabungan santri", true],
+          ["KAT-KANTIN", "Kantin & Koperasi", "Pengelolaan kas unit kantin sekolah", true],
+          ["KAT-GEDUNG", "Uang Gedung", "Pengembangan sarana & prasarana", true],
+          ["KAT-BOS", "Bantuan / BOS", "Bantuan operasional sekolah", true],
+          ["KAT-OPERASIONAL", "Operasional", "Biaya operasional harian sekolah", true],
+          ["KAT-LAIN", "Lain-lain", "Penerimaan & pengeluaran lain-lain", true]
+        ];
+        defaultKategori.forEach(function(r) { sheet.appendRow(r); });
+      }
+    } else {
+      var lastCol = Math.max(sheet.getLastColumn(), expectedHeaders.length);
+      var currentHeaders = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+      var needsUpdate = false;
+
+      if (currentHeaders.length < expectedHeaders.length) {
+        needsUpdate = true;
+      } else {
+        for (var h = 0; h < expectedHeaders.length; h++) {
+          if (String(currentHeaders[h] || "").trim().toLowerCase() !== expectedHeaders[h].toLowerCase()) {
+            needsUpdate = true;
+            break;
+          }
+        }
+      }
+
+      if (needsUpdate) {
+        sheet.getRange(1, 1, 1, expectedHeaders.length).setValues([expectedHeaders]);
+        var headerRange = sheet.getRange(1, 1, 1, expectedHeaders.length);
+        headerRange.setFontWeight("bold").setBackground("#047857").setFontColor("#FFFFFF");
+        report.push("Header baris 1 diperbaiki: " + sheetName);
+      } else {
+        report.push("Header valid: " + sheetName);
+      }
+
+      if (sheetName === "KATEGORI_DANA" && sheet.getLastRow() <= 1) {
+        var defaultKategori = [
+          ["KAT-SPP", "SPP", "Dana penerimaan syahriah / SPP bulanan santri", true],
+          ["KAT-DONASI", "Donasi & Infaq", "Penerimaan donasi, infaq, dan sedekah", true],
+          ["KAT-TABUNGAN", "Tabungan Siswa", "Titipan tabungan santri", true],
+          ["KAT-KANTIN", "Kantin & Koperasi", "Pengelolaan kas unit kantin sekolah", true],
+          ["KAT-GEDUNG", "Uang Gedung", "Pengembangan sarana & prasarana", true],
+          ["KAT-BOS", "Bantuan / BOS", "Bantuan operasional sekolah", true],
+          ["KAT-OPERASIONAL", "Operasional", "Biaya operasional harian sekolah", true],
+          ["KAT-LAIN", "Lain-lain", "Penerimaan & pengeluaran lain-lain", true]
+        ];
+        defaultKategori.forEach(function(r) { sheet.appendRow(r); });
+        report.push("Data default KATEGORI_DANA diisi");
+      }
+    }
+  }
+
+  setupInstallableTrigger();
+  bumpVersion();
+  Logger.log("Hasil perbaikiSemuaHeader:\n" + report.join("\n"));
+  return { status: "success", report: report, version: getVersion() };
+}
+
+/**
  * Endpoint HTTP GET: Untuk polling getVersion (ringan), ping, & getAllData
  */
 function doGet(e) {
@@ -76,6 +208,7 @@ function doGet(e) {
         students: allData.students,
         transactions: allData.transactions,
         keuangan: allData.keuangan,
+        kategori_dana: allData.kategori_dana,
         setting: allData.settings,
         settings: allData.settings,
         users: allData.users,
@@ -83,6 +216,8 @@ function doGet(e) {
         logs: allData.logs,
         data: allData
       };
+    } else if (action === "perbaikiSemuaHeader") {
+      result = perbaikiSemuaHeader();
     } else {
       result = { status: "error", message: "Action tidak dikenal: " + action };
     }
@@ -104,6 +239,25 @@ function doPost(e) {
     var request = JSON.parse(rawData);
     var action = request.action;
     var payload = request.payload || {};
+
+    // Validasi Hak Akses (RBAC): Cegah KEPSEK / WALI melakukan aksi tulis/modifikasi
+    var writeActions = [
+      "ADD_STUDENT", "UPDATE_STUDENT", "DELETE_STUDENT", "BULK_IMPORT_STUDENTS",
+      "PROCESS_PAYMENT", "CANCEL_PAYMENT", "VERIFY_TRANSACTION", "UPDATE_TRANSACTION_STATUS",
+      "ADD_KEUANGAN", "CANCEL_KEUANGAN", "UPDATE_SETTING",
+      "ADD_ANNOUNCEMENT", "TOGGLE_ANNOUNCEMENT", "DELETE_ANNOUNCEMENT",
+      "ADD_KATEGORI_DANA", "UPDATE_KATEGORI_DANA", "UPLOAD_DRIVE_FILE"
+    ];
+
+    var userRole = (payload.operator_role || payload.role || "").toString().toUpperCase();
+    if (writeActions.indexOf(action) > -1) {
+      if (userRole === "WALI" || userRole === "KEPSEK") {
+        return ContentService.createTextOutput(JSON.stringify({
+          status: "error",
+          message: "Akses ditolak: Role " + userRole + " hanya memiliki akses baca (read-only) dan tidak diizinkan mengubah data!"
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
 
     var ss = getSpreadsheet();
     checkAndInitSheets(ss);
@@ -146,6 +300,18 @@ function doPost(e) {
         response = handleAddKeuangan(ss, payload);
         break;
 
+      case "CANCEL_KEUANGAN":
+        response = handleCancelKeuangan(ss, payload);
+        break;
+
+      case "ADD_KATEGORI_DANA":
+        response = handleAddKategoriDana(ss, payload);
+        break;
+
+      case "UPDATE_KATEGORI_DANA":
+        response = handleUpdateKategoriDana(ss, payload);
+        break;
+
       case "UPDATE_SETTING":
         response = handleUpdateSetting(ss, payload);
         break;
@@ -164,6 +330,11 @@ function doPost(e) {
 
       case "UPLOAD_DRIVE_FILE":
         response = handleUploadFile(payload);
+        break;
+
+      case "PERBAIKI_HEADER":
+      case "PERBAIKI_SEMUA_HEADER":
+        response = perbaikiSemuaHeader();
         break;
 
       case "SYNC_ALL_DATA":
@@ -193,16 +364,17 @@ function doPost(e) {
 }
 
 /**
- * 1. Otomatis membuat 7 Sheet resmi jika belum tersedia di Spreadsheet
+ * 1. Otomatis membuat 8 Sheet resmi jika belum tersedia di Spreadsheet
  */
 function checkAndInitSheets(ss) {
   var requiredSheets = {
     "USER": ["id_user", "username", "password", "nama", "role", "id_siswa", "nisn"],
     "SISWA": ["id_siswa", "nisn", "nik", "nama", "tempat_lahir", "tanggal_lahir", "jenis_kelamin", "kelas", "nama_wali", "no_hp", "alamat", "foto", "spp_nominal", "spp_kategori", "spp_catatan", "status_aktif"],
     "TRANSAKSI": ["id_transaksi", "tanggal", "nisn", "nama_siswa", "kelas", "jenis", "kategori", "bulan", "nominal_tagihan", "nominal_bayar", "sisa", "status", "petugas", "keterangan", "alasan_batal"],
-    "KEUANGAN": ["id_keuangan", "tanggal", "jenis", "kategori", "nominal", "keterangan", "bukti", "petugas"],
+    "KEUANGAN": ["id_keuangan", "tanggal", "jenis", "kategori", "nominal", "keterangan", "bukti", "petugas", "status", "alasan_batal", "id_kategori"],
     "SETTING": ["nama_sekolah", "logo", "alamat", "no_wa", "kop_surat", "tahun_ajaran", "nama_kepsek", "nama_bendahara", "spp_default_nominal", "nama_bank", "no_rekening", "atas_nama_rekening", "qris_image"],
     "PENGUMUMAN": ["id_pengumuman", "tanggal", "judul", "isi", "penulis", "is_penting", "status_aktif"],
+    "KATEGORI_DANA": ["id_kategori", "nama_kategori", "keterangan", "status_aktif"],
     "LOG": ["tanggal", "user", "aktivitas"]
   };
 
@@ -217,6 +389,19 @@ function checkAndInitSheets(ss) {
       if (sheetName === "USER") {
         sheet.appendRow(["USR-001", "bendahara", "123", "Usth. Nur Khasanah (Bendahara)", "BENDAHARA", "", ""]);
         sheet.appendRow(["USR-002", "kepsek", "123", "Ust. H. Ahmad Mufid (Kepala Sekolah)", "KEPSEK", "", ""]);
+      }
+      if (sheetName === "KATEGORI_DANA") {
+        var defaultKategori = [
+          ["KAT-SPP", "SPP", "Dana penerimaan syahriah / SPP bulanan santri", true],
+          ["KAT-DONASI", "Donasi & Infaq", "Penerimaan donasi, infaq, dan sedekah", true],
+          ["KAT-TABUNGAN", "Tabungan Siswa", "Titipan tabungan santri", true],
+          ["KAT-KANTIN", "Kantin & Koperasi", "Pengelolaan kas unit kantin sekolah", true],
+          ["KAT-GEDUNG", "Uang Gedung", "Pengembangan sarana & prasarana", true],
+          ["KAT-BOS", "Bantuan / BOS", "Bantuan operasional sekolah", true],
+          ["KAT-OPERASIONAL", "Operasional", "Biaya operasional harian sekolah", true],
+          ["KAT-LAIN", "Lain-lain", "Penerimaan & pengeluaran lain-lain", true]
+        ];
+        defaultKategori.forEach(function(r) { sheet.appendRow(r); });
       }
       if (sheetName === "SETTING") {
         sheet.appendRow([
@@ -240,7 +425,7 @@ function checkAndInitSheets(ss) {
 }
 
 /**
- * 2. Mengambil seluruh data dari 7 Sheet
+ * 2. Mengambil seluruh data dari 8 Sheet
  */
 function fetchAllSheetsData() {
   var ss = getSpreadsheet();
@@ -251,6 +436,7 @@ function fetchAllSheetsData() {
     students: getSheetRows(ss, "SISWA"),
     transactions: getSheetRows(ss, "TRANSAKSI"),
     keuangan: getSheetRows(ss, "KEUANGAN"),
+    kategori_dana: getSheetRows(ss, "KATEGORI_DANA"),
     settings: getSheetRows(ss, "SETTING")[0] || null,
     announcements: getSheetRows(ss, "PENGUMUMAN"),
     logs: getSheetRows(ss, "LOG")
@@ -606,7 +792,7 @@ function handleVerifyTransaction(ss, payload) {
 }
 
 /**
- * 8. Handle Keuangan Masuk / Keluar (Kas Lembaga)
+ * 8. Handle Keuangan Masuk / Keluar (Kas Lembaga) & Pembatalan Transaksi Kas
  */
 function handleAddKeuangan(ss, k) {
   var sheet = ss.getSheetByName("KEUANGAN");
@@ -621,12 +807,78 @@ function handleAddKeuangan(ss, k) {
     Number(k.nominal) || 0,
     k.keterangan || "",
     k.bukti || "",
-    k.petugas || "Bendahara"
+    k.petugas || "Bendahara",
+    k.status || "ACTIVE",
+    k.alasan_batal || "",
+    k.id_kategori || ""
   ]);
 
   appendLog(ss, k.petugas || "Bendahara", "Input Kas " + k.jenis + " [" + k.kategori + "] Rp" + k.nominal + " - " + k.keterangan);
   bumpVersion();
   return { status: "success", id_keuangan: newId, message: "Catatan keuangan kas berhasil disimpan ke Spreadsheet!" };
+}
+
+function handleCancelKeuangan(ss, payload) {
+  var sheet = ss.getSheetByName("KEUANGAN");
+  if (!sheet) return { status: "error", message: "Sheet KEUANGAN tidak ditemukan" };
+  var data = sheet.getDataRange().getValues();
+  var id = String(payload.id_keuangan || "").trim();
+  var reason = String(payload.reason || payload.alasan_batal || "Dibatalkan").trim();
+  var operator = payload.operator || payload.petugas || "Bendahara";
+
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]).trim() === id) {
+      var rowIdx = i + 1;
+      sheet.getRange(rowIdx, 9).setValue("CANCEL");
+      sheet.getRange(rowIdx, 10).setValue(reason);
+
+      appendLog(ss, operator, "MEMBATALKAN Catatan Kas " + id + ". Alasan: " + reason);
+      bumpVersion();
+      return { status: "success", message: "Catatan keuangan berhasil dibatalkan!" };
+    }
+  }
+  return { status: "error", message: "Catatan keuangan ID " + id + " tidak ditemukan" };
+}
+
+/**
+ * 8b. Handle Kategori Sumber Dana
+ */
+function handleAddKategoriDana(ss, payload) {
+  var sheet = ss.getSheetByName("KATEGORI_DANA");
+  if (!sheet) {
+    checkAndInitSheets(ss);
+    sheet = ss.getSheetByName("KATEGORI_DANA");
+  }
+  var newId = payload.id_kategori || ("KAT-" + new Date().getTime());
+  var nama = String(payload.nama_kategori || "").trim();
+  var ket = String(payload.keterangan || "").trim();
+  var aktif = payload.status_aktif !== false;
+
+  sheet.appendRow([newId, nama, ket, aktif]);
+  appendLog(ss, payload.operator || "Bendahara", "Menambah Kategori Sumber Dana: " + nama);
+  bumpVersion();
+  return { status: "success", id_kategori: newId, message: "Kategori sumber dana berhasil ditambahkan!" };
+}
+
+function handleUpdateKategoriDana(ss, payload) {
+  var sheet = ss.getSheetByName("KATEGORI_DANA");
+  if (!sheet) return { status: "error", message: "Sheet KATEGORI_DANA tidak ditemukan" };
+  var data = sheet.getDataRange().getValues();
+  var id = String(payload.id_kategori || "").trim();
+
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]).trim() === id) {
+      var rowIdx = i + 1;
+      if (payload.nama_kategori) sheet.getRange(rowIdx, 2).setValue(payload.nama_kategori);
+      if (payload.keterangan !== undefined) sheet.getRange(rowIdx, 3).setValue(payload.keterangan);
+      if (payload.status_aktif !== undefined) sheet.getRange(rowIdx, 4).setValue(payload.status_aktif);
+
+      appendLog(ss, payload.operator || "Bendahara", "Memperbarui Kategori Dana: " + (payload.nama_kategori || id));
+      bumpVersion();
+      return { status: "success", message: "Kategori sumber dana berhasil diperbarui!" };
+    }
+  }
+  return { status: "error", message: "Kategori ID " + id + " tidak ditemukan" };
 }
 
 /**
@@ -781,6 +1033,7 @@ function handleSyncAllData(ss, payload) {
     students: allData.students,
     transactions: allData.transactions,
     keuangan: allData.keuangan,
+    kategori_dana: allData.kategori_dana,
     setting: allData.settings,
     settings: allData.settings,
     users: allData.users,

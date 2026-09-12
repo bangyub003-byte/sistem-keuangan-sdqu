@@ -53,6 +53,14 @@ export interface Transaction {
 }
 
 export type KeuanganType = 'MASUK' | 'KELUAR';
+export type KeuanganStatus = 'ACTIVE' | 'CANCEL';
+
+export interface KategoriDana {
+  id_kategori: string;
+  nama_kategori: string;
+  keterangan?: string;
+  status_aktif?: boolean;
+}
 
 export interface KeuanganRecord {
   id_keuangan: string;
@@ -63,6 +71,9 @@ export interface KeuanganRecord {
   keterangan: string;
   bukti?: string; // Drive URL or base64
   petugas?: string;
+  status?: KeuanganStatus;
+  alasan_batal?: string;
+  id_kategori?: string;
 }
 
 export interface SchoolSetting {

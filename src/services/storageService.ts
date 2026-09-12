@@ -1,5 +1,6 @@
-import { Student, Transaction, KeuanganRecord, SchoolSetting, UserAccount, ActivityLog, Announcement } from '../types';
-import { INITIAL_SETTING, INITIAL_USERS, INITIAL_STUDENTS, INITIAL_TRANSACTIONS, INITIAL_KEUANGAN, INITIAL_LOGS, INITIAL_ANNOUNCEMENTS } from '../data/initialData';
+import { Student, Transaction, KeuanganRecord, SchoolSetting, UserAccount, ActivityLog, Announcement, KategoriDana } from '../types';
+import { INITIAL_SETTING, INITIAL_USERS, INITIAL_STUDENTS, INITIAL_TRANSACTIONS, INITIAL_KEUANGAN, INITIAL_LOGS, INITIAL_ANNOUNCEMENTS, INITIAL_KATEGORI_DANA } from '../data/initialData';
+import { APP_CONFIG } from '../config';
 
 const STORAGE_KEYS = {
   SETTING: 'sdq_setting_v1',
@@ -10,7 +11,8 @@ const STORAGE_KEYS = {
   LOGS: 'sdq_logs_v1',
   CURRENT_USER: 'sdq_current_user_v1',
   ANNOUNCEMENTS: 'sdq_announcements_v1',
-  DATA_VERSION: 'sdq_data_version_v1'
+  DATA_VERSION: 'sdq_data_version_v1',
+  KATEGORI_DANA: 'sdq_kategori_dana_v1'
 };
 
 /**
@@ -57,6 +59,9 @@ export class StorageService {
       return {
         ...INITIAL_SETTING,
         ...parsed,
+        gas_url: (parsed.gas_url && parsed.gas_url.trim() !== '') ? parsed.gas_url.trim() : APP_CONFIG.DEFAULT_GAS_URL,
+        spreadsheet_id: (parsed.spreadsheet_id && parsed.spreadsheet_id.trim() !== '') ? parsed.spreadsheet_id.trim() : APP_CONFIG.DEFAULT_SPREADSHEET_ID,
+        drive_folder_id: (parsed.drive_folder_id && parsed.drive_folder_id.trim() !== '') ? parsed.drive_folder_id.trim() : APP_CONFIG.DEFAULT_DRIVE_FOLDER_ID,
         logo: formatDriveUrl(parsed.logo || INITIAL_SETTING.logo),
         qris_image: formatDriveUrl(parsed.qris_image || INITIAL_SETTING.qris_image)
       };
@@ -142,6 +147,21 @@ export class StorageService {
 
   static saveKeuangan(keuangan: KeuanganRecord[]) {
     localStorage.setItem(STORAGE_KEYS.KEUANGAN, JSON.stringify(keuangan));
+  }
+
+  static getKategoriDana(): KategoriDana[] {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.KATEGORI_DANA);
+      if (!data) return INITIAL_KATEGORI_DANA;
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_KATEGORI_DANA;
+    } catch {
+      return INITIAL_KATEGORI_DANA;
+    }
+  }
+
+  static saveKategoriDana(kategori: KategoriDana[]) {
+    localStorage.setItem(STORAGE_KEYS.KATEGORI_DANA, JSON.stringify(kategori));
   }
 
   static getLogs(): ActivityLog[] {
@@ -257,6 +277,26 @@ export class StorageService {
       return { success: false, message: message || 'Respon Apps Script tidak sesuai format' };
     } catch (err: any) {
       return { success: false, message: `Gagal menghubungi Apps Script: ${err.message || 'Periksa URL dan izin akses Anyone'}` };
+    }
+  }
+
+  static async perbaikiSemuaHeader(url: string): Promise<{ success: boolean; message: string; report?: string[] }> {
+    try {
+      const fixUrl = `${url}${url.includes('?') ? '&' : '?'}action=perbaikiSemuaHeader&_t=${Date.now()}`;
+      const res = await fetch(fixUrl, { method: 'GET' });
+      const data = await res.json();
+      const status = data?.status || data?.data?.status;
+      if (status === 'success') {
+        const report = data?.report || [];
+        return {
+          success: true,
+          message: `Validasi dan perbaikan struktur header baris 1 sukses! (${report.length} sheet dicek)`,
+          report
+        };
+      }
+      return { success: false, message: data?.message || 'Gagal menjalankan perbaikan header' };
+    } catch (err: any) {
+      return { success: false, message: `Gagal menghubungi Apps Script: ${err.message}` };
     }
   }
 
@@ -565,6 +605,92 @@ export class StorageService {
     return { record: newRec, gasResult };
   }
 
+  static async cancelKeuangan(id_keuangan: string, reason: string, operator: string): Promise<{
+    gasResult?: any;
+  }> {
+    const keuangan = this.getKeuangan();
+    let foundRec: KeuanganRecord | undefined;
+    const updated = keuangan.map(k => {
+      if (k.id_keuangan === id_keuangan) {
+        foundRec = k;
+        return {
+          ...k,
+          status: 'CANCEL' as const,
+          alasan_batal: reason
+        };
+      }
+      return k;
+    });
+
+    this.saveKeuangan(updated);
+    this.addLog(operator, `MEMBATALKAN Catatan Kas ${id_keuangan} (${foundRec?.kategori || ''} Rp${(foundRec?.nominal || 0).toLocaleString('id-ID')}). Alasan: ${reason}`);
+
+    const setting = this.getSetting();
+    let gasResult: any = null;
+    if (setting.gas_url) {
+      gasResult = await this.callGasApi(setting.gas_url, 'CANCEL_KEUANGAN', {
+        id_keuangan,
+        reason,
+        operator,
+        operator_role: 'BENDAHARA'
+      });
+    }
+
+    return { gasResult };
+  }
+
+  static async addKategoriDana(nama_kategori: string, keterangan: string = '', operator: string = 'Bendahara'): Promise<{
+    kategori: KategoriDana;
+    gasResult?: any;
+  }> {
+    const list = this.getKategoriDana();
+    const newKat: KategoriDana = {
+      id_kategori: `KAT-${Date.now()}`,
+      nama_kategori: nama_kategori.trim(),
+      keterangan,
+      status_aktif: true
+    };
+    const updated = [...list, newKat];
+    this.saveKategoriDana(updated);
+    this.addLog(operator, `Menambahkan Kategori Sumber Dana Baru: ${nama_kategori}`);
+
+    const setting = this.getSetting();
+    let gasResult: any = null;
+    if (setting.gas_url) {
+      gasResult = await this.callGasApi(setting.gas_url, 'ADD_KATEGORI_DANA', {
+        ...newKat,
+        operator,
+        operator_role: 'BENDAHARA'
+      });
+    }
+
+    return { kategori: newKat, gasResult };
+  }
+
+  static async updateKategoriDana(id_kategori: string, nama_kategori: string, keterangan: string, status_aktif: boolean, operator: string = 'Bendahara'): Promise<{
+    gasResult?: any;
+  }> {
+    const list = this.getKategoriDana();
+    const updated = list.map(k => k.id_kategori === id_kategori ? { ...k, nama_kategori, keterangan, status_aktif } : k);
+    this.saveKategoriDana(updated);
+    this.addLog(operator, `Memperbarui Kategori Sumber Dana [${id_kategori}]: ${nama_kategori}`);
+
+    const setting = this.getSetting();
+    let gasResult: any = null;
+    if (setting.gas_url) {
+      gasResult = await this.callGasApi(setting.gas_url, 'UPDATE_KATEGORI_DANA', {
+        id_kategori,
+        nama_kategori,
+        keterangan,
+        status_aktif,
+        operator,
+        operator_role: 'BENDAHARA'
+      });
+    }
+
+    return { gasResult };
+  }
+
   static async saveSetting(setting: SchoolSetting, currentUser: string = 'Bendahara'): Promise<{
     gasResult?: any;
   }> {
@@ -682,6 +808,7 @@ export class StorageService {
     students?: Student[];
     transactions?: Transaction[];
     keuangan?: KeuanganRecord[];
+    kategori_dana?: KategoriDana[];
     setting?: SchoolSetting;
     users?: UserAccount[];
     announcements?: Announcement[];
@@ -777,7 +904,18 @@ export class StorageService {
         nominal: Number(k.nominal) || 0,
         keterangan: String(k.keterangan || ''),
         bukti: formatDriveUrl(k.bukti),
-        petugas: String(k.petugas || 'Bendahara')
+        petugas: String(k.petugas || 'Bendahara'),
+        status: (k.status === 'CANCEL') ? 'CANCEL' : 'ACTIVE',
+        alasan_batal: k.alasan_batal ? String(k.alasan_batal) : undefined,
+        id_kategori: k.id_kategori ? String(k.id_kategori) : undefined
+      })) : [];
+
+      // Parse Kategori Dana
+      const parsedKategoriDana: KategoriDana[] = Array.isArray(data.kategori_dana) ? data.kategori_dana.filter((kd: any) => kd.nama_kategori).map((kd: any) => ({
+        id_kategori: String(kd.id_kategori || `KAT-${Date.now()}`),
+        nama_kategori: String(kd.nama_kategori),
+        keterangan: String(kd.keterangan || ''),
+        status_aktif: kd.status_aktif !== false && kd.status_aktif !== 'false' && kd.status_aktif !== 0
       })) : [];
 
       // Parse Users
@@ -830,6 +968,7 @@ export class StorageService {
       if (parsedStudents.length > 0) this.saveStudents(parsedStudents);
       if (parsedTransactions.length > 0) this.saveTransactions(parsedTransactions);
       if (parsedKeuangan.length > 0) this.saveKeuangan(parsedKeuangan);
+      if (parsedKategoriDana.length > 0) this.saveKategoriDana(parsedKategoriDana);
       if (parsedUsers.length > 0) this.saveUsers(parsedUsers);
       if (parsedAnnouncements.length > 0) this.saveAnnouncements(parsedAnnouncements);
 
@@ -840,6 +979,7 @@ export class StorageService {
         students: parsedStudents.length > 0 ? parsedStudents : undefined,
         transactions: parsedTransactions.length > 0 ? parsedTransactions : undefined,
         keuangan: parsedKeuangan.length > 0 ? parsedKeuangan : undefined,
+        kategori_dana: parsedKategoriDana.length > 0 ? parsedKategoriDana : undefined,
         setting: parsedSetting,
         users: parsedUsers.length > 0 ? parsedUsers : undefined,
         announcements: parsedAnnouncements.length > 0 ? parsedAnnouncements : undefined

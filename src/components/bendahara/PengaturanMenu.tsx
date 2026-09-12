@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { SchoolSetting, Announcement } from '../../types';
 import { GOOGLE_APPS_SCRIPT_CODE } from '../../services/gasBackendCode';
 import { StorageService } from '../../services/storageService';
-import { Settings, Image, Upload, Link, Check, Copy, ExternalLink, RefreshCw, ShieldCheck, HelpCircle, FileCode, CheckCircle2, AlertCircle, QrCode, CreditCard, BookOpen, Bell, Megaphone, Trash2, PlusCircle, Info } from 'lucide-react';
+import { APP_CONFIG } from '../../config';
+import { Settings, Image, Upload, Link, Check, Copy, ExternalLink, RefreshCw, ShieldCheck, HelpCircle, FileCode, CheckCircle2, AlertCircle, QrCode, CreditCard, BookOpen, Bell, Megaphone, Trash2, PlusCircle, Info, Wrench } from 'lucide-react';
 
 interface PengaturanMenuProps {
   setting: SchoolSetting;
@@ -25,9 +26,18 @@ export const PengaturanMenu: React.FC<PengaturanMenuProps> = ({
   onToggleAnnouncement,
   onDeleteAnnouncement
 }) => {
-  const [formData, setFormData] = useState<SchoolSetting>({ ...setting });
+  const [formData, setFormData] = useState<SchoolSetting>({
+    ...setting,
+    gas_url: setting.gas_url || APP_CONFIG.DEFAULT_GAS_URL,
+    spreadsheet_id: setting.spreadsheet_id || APP_CONFIG.DEFAULT_SPREADSHEET_ID,
+    drive_folder_id: setting.drive_folder_id || APP_CONFIG.DEFAULT_DRIVE_FOLDER_ID
+  });
   const [testStatus, setTestStatus] = useState<{ testing: boolean; message: string; success?: boolean }>({
     testing: false,
+    message: ''
+  });
+  const [fixHeaderStatus, setFixHeaderStatus] = useState<{ running: boolean; message: string; success?: boolean }>({
+    running: false,
     message: ''
   });
   const [copiedCode, setCopiedCode] = useState(false);
@@ -112,6 +122,25 @@ export const PengaturanMenu: React.FC<PengaturanMenuProps> = ({
     const res = await StorageService.testGasConnection(formData.gas_url);
     setTestStatus({
       testing: false,
+      message: res.message,
+      success: res.success
+    });
+  };
+
+  const handleFixHeaders = async () => {
+    if (!formData.gas_url) {
+      setFixHeaderStatus({
+        running: false,
+        message: 'Masukkan URL Web App Google Apps Script terlebih dahulu!',
+        success: false
+      });
+      return;
+    }
+
+    setFixHeaderStatus({ running: true, message: 'Memeriksa dan memperbaiki header di seluruh sheet...' });
+    const res = await StorageService.perbaikiSemuaHeader(formData.gas_url);
+    setFixHeaderStatus({
+      running: false,
       message: res.message,
       success: res.success
     });
@@ -686,6 +715,16 @@ export const PengaturanMenu: React.FC<PengaturanMenuProps> = ({
                 >
                   {testStatus.testing ? 'Menguji...' : 'Tes Koneksi'}
                 </button>
+                <button
+                  type="button"
+                  onClick={handleFixHeaders}
+                  disabled={fixHeaderStatus.running}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg shadow-xs cursor-pointer disabled:opacity-50 shrink-0"
+                  title="Otomatis validasi baris 1 seluruh sheet dan pasang trigger onEdit di Spreadsheet"
+                >
+                  <Wrench className="w-3.5 h-3.5" />
+                  <span>{fixHeaderStatus.running ? 'Memproses...' : 'Auto-Fix Header Sheet'}</span>
+                </button>
                 {onPullFromSpreadsheet && (
                   <button
                     type="button"
@@ -699,7 +738,7 @@ export const PengaturanMenu: React.FC<PengaturanMenuProps> = ({
                 )}
               </div>
               <p className="text-[10px] text-slate-500 mt-1.5">
-                <strong>Tips:</strong> Anda bisa menambahkan atau mengedit data santri dan transaksi langsung lewat Google Spreadsheet. Klik tombol <strong>"Tarik Data dari Spreadsheet"</strong> kapan saja untuk menyinkronkannya secara instan ke aplikasi!
+                <strong>Tips:</strong> URL Web App dan ID Spreadsheet telah terpasang secara default melalui konfigurasi sistem (<code>src/config.ts</code>). Perangkat baru langsung terhubung otomatis tanpa harus mengisi ulang!
               </p>
             </div>
 
@@ -709,6 +748,15 @@ export const PengaturanMenu: React.FC<PengaturanMenuProps> = ({
               }`}>
                 {testStatus.success ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <AlertCircle className="w-4 h-4 text-rose-600" />}
                 <span>{testStatus.message}</span>
+              </div>
+            )}
+
+            {fixHeaderStatus.message && (
+              <div className={`sm:col-span-2 p-3 rounded-xl border text-xs flex items-center gap-2 ${
+                fixHeaderStatus.success ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'
+              }`}>
+                {fixHeaderStatus.success ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <AlertCircle className="w-4 h-4 text-rose-600" />}
+                <span>{fixHeaderStatus.message}</span>
               </div>
             )}
 

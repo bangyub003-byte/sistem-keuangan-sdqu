@@ -1,4 +1,5 @@
-import { Student, Transaction, KeuanganRecord, SchoolSetting, UserAccount, ActivityLog, Announcement } from '../types';
+import { Student, Transaction, KeuanganRecord, SchoolSetting, UserAccount, ActivityLog, Announcement, KategoriDana } from '../types';
+import { APP_CONFIG } from '../config';
 
 export const INITIAL_SETTING: SchoolSetting = {
   nama_sekolah: "SD Qur'an Unggulan Al-I'tisham Playen",
@@ -10,9 +11,9 @@ export const INITIAL_SETTING: SchoolSetting = {
   nama_kepsek: "Ust. H. Ahmad Mufid, M.Pd.",
   nama_bendahara: "Usth. Nur Khasanah, S.E.I.",
   spp_default_nominal: 500000,
-  gas_url: "",
-  drive_folder_id: "1F_SDQ_AlItisham_Playen_Keuangan",
-  spreadsheet_id: "1SDQ_AlItisham_Playen_Database_Keuangan",
+  gas_url: APP_CONFIG.DEFAULT_GAS_URL,
+  drive_folder_id: APP_CONFIG.DEFAULT_DRIVE_FOLDER_ID,
+  spreadsheet_id: APP_CONFIG.DEFAULT_SPREADSHEET_ID,
   // Rekening & QRIS Resmi Sekolah
   nama_bank: "Bank Syariah Indonesia (BSI)",
   no_rekening: "7188 9922 11",
@@ -406,4 +407,15 @@ export const INITIAL_ANNOUNCEMENTS: Announcement[] = [
     penulis: "Koordinator Tahfidz & Keuangan",
     is_penting: false
   }
+];
+
+export const INITIAL_KATEGORI_DANA: KategoriDana[] = [
+  { id_kategori: "KAT-SPP", nama_kategori: "SPP", keterangan: "Dana penerimaan syahriah / SPP bulanan santri", status_aktif: true },
+  { id_kategori: "KAT-DONASI", nama_kategori: "Donasi & Infaq", keterangan: "Penerimaan donasi, infaq, dan sedekah", status_aktif: true },
+  { id_kategori: "KAT-TABUNGAN", nama_kategori: "Tabungan Siswa", keterangan: "Titipan tabungan santri", status_aktif: true },
+  { id_kategori: "KAT-KANTIN", nama_kategori: "Kantin & Koperasi", keterangan: "Pengelolaan kas unit kantin sekolah", status_aktif: true },
+  { id_kategori: "KAT-GEDUNG", nama_kategori: "Uang Gedung", keterangan: "Pengembangan sarana & prasarana", status_aktif: true },
+  { id_kategori: "KAT-BOS", nama_kategori: "Bantuan / BOS", keterangan: "Bantuan operasional sekolah", status_aktif: true },
+  { id_kategori: "KAT-OPERASIONAL", nama_kategori: "Operasional", keterangan: "Biaya operasional harian sekolah", status_aktif: true },
+  { id_kategori: "KAT-LAIN", nama_kategori: "Lain-lain", keterangan: "Penerimaan & pengeluaran lain-lain", status_aktif: true }
 ];

@@ -19,7 +19,14 @@ export const KepsekDashboard: React.FC<KepsekDashboardProps> = ({
   setting,
   onOpenPrintReport
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'RINGKASAN' | 'REKAP_BAYAR' | 'LAPORAN_KAS'>('RINGKASAN');
+  const [activeSubTab, setActiveSubTab] = useState<'RINGKASAN' | 'REKAP_BAYAR' | 'REKAP_KAS' | 'LAPORAN_KAS'>('RINGKASAN');
+  const [searchMurid, setSearchMurid] = useState('');
+  const [filterKelas, setFilterKelas] = useState('');
+  const [filterStatusBayar, setFilterStatusBayar] = useState('');
+
+  const [kasTab, setKasTab] = useState<'SEMUA' | 'MASUK' | 'KELUAR'>('SEMUA');
+  const [searchKas, setSearchKas] = useState('');
+  const [filterKasKategori, setFilterKasKategori] = useState('');
 
   const activeStudents = students.filter(s => s.status_aktif);
   
@@ -31,22 +38,24 @@ export const KepsekDashboard: React.FC<KepsekDashboardProps> = ({
     .filter(t => t.status === 'KURANG')
     .reduce((sum, t) => sum + (t.sisa || 0), 0);
 
-  const totalMasukKas = keuangan
+  const validKeuangan = keuangan.filter(k => k.status !== 'CANCEL');
+
+  const totalMasukKas = validKeuangan
     .filter(k => k.jenis === 'MASUK')
     .reduce((sum, k) => sum + (k.nominal || 0), 0);
 
-  const totalKeluarKas = keuangan
+  const totalKeluarKas = validKeuangan
     .filter(k => k.jenis === 'KELUAR')
     .reduce((sum, k) => sum + (k.nominal || 0), 0);
 
   const saldoKas = totalMasukKas - totalKeluarKas;
 
   // Chart Data: Pemasukan vs Pengeluaran per Kategori
-  const kasCategories = Array.from(new Set(keuangan.map(k => k.kategori)));
+  const kasCategories = Array.from(new Set(validKeuangan.map(k => k.kategori)));
   const chartKasByCategory = kasCategories.map(cat => ({
     kategori: cat,
-    Masuk: keuangan.filter(k => k.kategori === cat && k.jenis === 'MASUK').reduce((a, b) => a + b.nominal, 0),
-    Keluar: keuangan.filter(k => k.kategori === cat && k.jenis === 'KELUAR').reduce((a, b) => a + b.nominal, 0)
+    Masuk: validKeuangan.filter(k => k.kategori === cat && k.jenis === 'MASUK').reduce((a, b) => a + b.nominal, 0),
+    Keluar: validKeuangan.filter(k => k.kategori === cat && k.jenis === 'KELUAR').reduce((a, b) => a + b.nominal, 0)
   }));
 
   const countLunas = transactions.filter(t => t.status === 'LUNAS').length;
@@ -57,6 +66,31 @@ export const KepsekDashboard: React.FC<KepsekDashboardProps> = ({
   ];
 
   const formatRupiah = (val: number) => 'Rp ' + (val || 0).toLocaleString('id-ID');
+
+  // Filtered transactions for Kepsek
+  const filteredTransactions = transactions.filter(t => {
+    if (t.status === 'CANCEL') return false;
+    const matchSearch = searchMurid
+      ? (t.nama_siswa?.toLowerCase().includes(searchMurid.toLowerCase()) || t.nisn?.includes(searchMurid))
+      : true;
+    const matchKelas = filterKelas ? t.kelas === filterKelas : true;
+    const matchStatus = filterStatusBayar ? t.status === filterStatusBayar : true;
+    return matchSearch && matchKelas && matchStatus;
+  });
+
+  const totalFilteredBayar = filteredTransactions.reduce((a, b) => a + (b.nominal_bayar || 0), 0);
+
+  // Filtered keuangan for Kepsek
+  const filteredKeuangan = keuangan.filter(k => {
+    const matchJenis = kasTab === 'SEMUA' ? true : k.jenis === kasTab;
+    const matchKat = filterKasKategori ? k.kategori === filterKasKategori : true;
+    const matchSearch = searchKas
+      ? (k.keterangan?.toLowerCase().includes(searchKas.toLowerCase()) || k.kategori?.toLowerCase().includes(searchKas.toLowerCase()))
+      : true;
+    return matchJenis && matchKat && matchSearch;
+  });
+
+  const availableClasses = Array.from(new Set(students.map(s => s.kelas))).filter(Boolean).sort();
 
   return (
     <div className="space-y-6">
@@ -109,14 +143,14 @@ export const KepsekDashboard: React.FC<KepsekDashboardProps> = ({
       </div>
 
       {/* Sub-Navigation Tabs for Kepsek */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
         <button
           onClick={() => setActiveSubTab('RINGKASAN')}
           className={`px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
             activeSubTab === 'RINGKASAN' ? 'bg-amber-800 text-white shadow-xs' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
           }`}
         >
-          Grafik Keuangan & Analitik
+          Grafik & Ringkasan
         </button>
         <button
           onClick={() => setActiveSubTab('REKAP_BAYAR')}
@@ -124,7 +158,15 @@ export const KepsekDashboard: React.FC<KepsekDashboardProps> = ({
             activeSubTab === 'REKAP_BAYAR' ? 'bg-amber-800 text-white shadow-xs' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
           }`}
         >
-          Rekapitulasi Pembayaran
+          Rekapitulasi Pembayaran Santri
+        </button>
+        <button
+          onClick={() => setActiveSubTab('REKAP_KAS')}
+          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+            activeSubTab === 'REKAP_KAS' ? 'bg-amber-800 text-white shadow-xs' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          Buku Kas & Pengeluaran
         </button>
         <button
           onClick={() => setActiveSubTab('LAPORAN_KAS')}
@@ -204,18 +246,53 @@ export const KepsekDashboard: React.FC<KepsekDashboardProps> = ({
       {/* View 2: Rekap Pembayaran */}
       {activeSubTab === 'REKAP_BAYAR' && (
         <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <div>
               <h3 className="font-bold text-slate-900 text-base">Rekapitulasi Setoran Pembayaran Santri</h3>
               <p className="text-xs text-slate-500">Daftar transaksi masuk real-time (Mode Baca Sah)</p>
             </div>
-            <button
-              onClick={() => onOpenPrintReport('REKAP_PEMBAYARAN')}
-              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-amber-800 hover:bg-amber-900 rounded-xl shadow-xs cursor-pointer"
+            <div className="flex items-center gap-2">
+              <div className="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-lg">
+                Total Masuk: <strong className="text-emerald-800">{formatRupiah(totalFilteredBayar)}</strong>
+              </div>
+              <button
+                onClick={() => onOpenPrintReport('REKAP_PEMBAYARAN')}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-amber-800 hover:bg-amber-900 rounded-xl shadow-xs cursor-pointer shrink-0"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Cetak Rekap</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Filters for Pembayaran */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+            <input
+              type="text"
+              value={searchMurid}
+              onChange={(e) => setSearchMurid(e.target.value)}
+              placeholder="Cari santri / NISN..."
+              className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-amber-800 focus:bg-white"
+            />
+            <select
+              value={filterKelas}
+              onChange={(e) => setFilterKelas(e.target.value)}
+              className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-amber-800 focus:bg-white"
             >
-              <Printer className="w-4 h-4" />
-              <span>Cetak Rekap Pembayaran</span>
-            </button>
+              <option value="">Semua Tingkat / Rombel Kelas</option>
+              {availableClasses.map(k => (
+                <option key={k} value={k}>{k}</option>
+              ))}
+            </select>
+            <select
+              value={filterStatusBayar}
+              onChange={(e) => setFilterStatusBayar(e.target.value)}
+              className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-amber-800 focus:bg-white"
+            >
+              <option value="">Semua Status Bayar</option>
+              <option value="LUNAS">Hanya Lunas</option>
+              <option value="KURANG">Hanya Kurang Bayar (Tunggakan)</option>
+            </select>
           </div>
 
           <div className="overflow-x-auto">
@@ -233,24 +310,164 @@ export const KepsekDashboard: React.FC<KepsekDashboardProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-150">
-                {transactions.filter(t => t.status !== 'CANCEL').map(trx => (
-                  <tr key={trx.id_transaksi} className="hover:bg-slate-50">
-                    <td className="p-3 text-slate-600">{trx.tanggal}</td>
-                    <td className="p-3 font-bold text-slate-900">{trx.nama_siswa}</td>
-                    <td className="p-3 text-slate-600">{trx.kelas}</td>
-                    <td className="p-3">{trx.jenis}</td>
-                    <td className="p-3 text-right font-extrabold text-emerald-800">{formatRupiah(trx.nominal_bayar)}</td>
-                    <td className="p-3 text-right font-bold text-rose-700">{trx.sisa > 0 ? formatRupiah(trx.sisa) : '-'}</td>
-                    <td className="p-3 text-center">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        trx.status === 'LUNAS' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                      }`}>
-                        {trx.status}
-                      </span>
+                {filteredTransactions.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="p-6 text-center text-slate-400">
+                      Tidak ada transaksi pada filter ini.
                     </td>
-                    <td className="p-3 text-slate-500">{trx.petugas}</td>
                   </tr>
+                ) : (
+                  filteredTransactions.map(trx => (
+                    <tr key={trx.id_transaksi} className="hover:bg-slate-50">
+                      <td className="p-3 text-slate-600">{trx.tanggal}</td>
+                      <td className="p-3 font-bold text-slate-900">{trx.nama_siswa}</td>
+                      <td className="p-3 text-slate-600">{trx.kelas}</td>
+                      <td className="p-3">{trx.jenis}</td>
+                      <td className="p-3 text-right font-extrabold text-emerald-800">{formatRupiah(trx.nominal_bayar)}</td>
+                      <td className="p-3 text-right font-bold text-rose-700">{trx.sisa > 0 ? formatRupiah(trx.sisa) : '-'}</td>
+                      <td className="p-3 text-center">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          trx.status === 'LUNAS' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {trx.status}
+                        </span>
+                      </td>
+                      <td className="p-3 text-slate-500">{trx.petugas}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* View 3: Rekap Buku Kas & Keuangan */}
+      {activeSubTab === 'REKAP_KAS' && (
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <h3 className="font-bold text-slate-900 text-base">Buku Kas & Pengeluaran Sekolah</h3>
+              <p className="text-xs text-slate-500">Pencatatan kas operasional lembaga (Mode Baca Transparan)</p>
+            </div>
+            <button
+              onClick={() => onOpenPrintReport('LAPORAN_KAS')}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-amber-800 hover:bg-amber-900 rounded-xl shadow-xs cursor-pointer shrink-0"
+            >
+              <Printer className="w-4 h-4" />
+              <span>Cetak Buku Kas Umum</span>
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+            <div className="flex items-center gap-2">
+              {(['SEMUA', 'MASUK', 'KELUAR'] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setKasTab(tab)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                    kasTab === tab
+                      ? 'bg-slate-800 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {tab === 'SEMUA' ? 'Semua Arus Kas' : tab === 'MASUK' ? 'Pemasukan' : 'Pengeluaran'}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={searchKas}
+                onChange={(e) => setSearchKas(e.target.value)}
+                placeholder="Cari uraian / keterangan..."
+                className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-amber-800 focus:bg-white"
+              />
+              <select
+                value={filterKasKategori}
+                onChange={(e) => setFilterKasKategori(e.target.value)}
+                className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-amber-800 focus:bg-white"
+              >
+                <option value="">Semua Kategori</option>
+                {kasCategories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
                 ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                  <th className="p-3 w-12 text-center">No</th>
+                  <th className="p-3 w-24">Tanggal</th>
+                  <th className="p-3 w-32">Kategori</th>
+                  <th className="p-3">Uraian / Keterangan</th>
+                  <th className="p-3 text-right w-32">Nominal</th>
+                  <th className="p-3 text-center w-24">Arus</th>
+                  <th className="p-3 text-center w-24">Bukti</th>
+                  <th className="p-3 w-28">Petugas</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-150">
+                {filteredKeuangan.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="p-6 text-center text-slate-400">
+                      Belum ada catatan kas pada filter ini.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredKeuangan.map((rec, idx) => (
+                    <tr key={rec.id_keuangan} className={`hover:bg-slate-50 ${rec.status === 'CANCEL' ? 'opacity-50' : ''}`}>
+                      <td className="p-3 text-center text-slate-400">{idx + 1}</td>
+                      <td className="p-3 text-slate-600 whitespace-nowrap">{rec.tanggal}</td>
+                      <td className="p-3 font-semibold text-slate-800">{rec.kategori}</td>
+                      <td className="p-3">
+                        <span className={rec.status === 'CANCEL' ? 'line-through text-slate-400' : 'text-slate-800'}>
+                          {rec.keterangan}
+                        </span>
+                        {rec.status === 'CANCEL' && rec.alasan_batal && (
+                          <div className="text-[10px] text-rose-600 font-medium mt-0.5">
+                            Batal: {rec.alasan_batal}
+                          </div>
+                        )}
+                      </td>
+                      <td className={`p-3 text-right font-bold ${
+                        rec.status === 'CANCEL'
+                          ? 'line-through text-slate-400'
+                          : rec.jenis === 'MASUK'
+                          ? 'text-emerald-800'
+                          : 'text-rose-700'
+                      }`}>
+                        {formatRupiah(rec.nominal)}
+                      </td>
+                      <td className="p-3 text-center">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          rec.jenis === 'MASUK' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                        }`}>
+                          {rec.jenis}
+                        </span>
+                      </td>
+                      <td className="p-3 text-center">
+                        {rec.bukti ? (
+                          <a
+                            href={rec.bukti}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[11px] text-sky-700 hover:underline font-semibold"
+                          >
+                            Lihat Nota
+                          </a>
+                        ) : (
+                          <span className="text-[10px] text-slate-300">-</span>
+                        )}
+                      </td>
+                      <td className="p-3 text-slate-500">{rec.petugas}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

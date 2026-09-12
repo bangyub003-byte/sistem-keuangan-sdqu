@@ -1,22 +1,41 @@
 import React, { useState } from 'react';
-import { KeuanganRecord, KeuanganType } from '../../types';
-import { Plus, ArrowDownLeft, ArrowUpRight, Filter, Search, FileText, Image, Calendar, Tag, Wallet, Check } from 'lucide-react';
+import { KeuanganRecord, KeuanganType, KategoriDana } from '../../types';
+import { Plus, ArrowDownLeft, ArrowUpRight, Filter, Search, FileText, Image, Calendar, Tag, Wallet, Check, AlertTriangle, X } from 'lucide-react';
 
 interface KeuanganMenuProps {
   keuangan: KeuanganRecord[];
   operatorName: string;
   onAddKeuangan: (rec: Omit<KeuanganRecord, 'id_keuangan'>) => void;
+  onCancelKeuangan?: (id: string, reason: string) => void;
+  kategoriDana?: KategoriDana[];
+  onAddKategoriDana?: (cat: { nama_kategori: string; keterangan?: string }) => void;
 }
 
 export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
   keuangan = [],
   operatorName,
-  onAddKeuangan
+  onAddKeuangan,
+  onCancelKeuangan,
+  kategoriDana = [],
+  onAddKategoriDana
 }) => {
   const [activeTab, setActiveTab] = useState<KeuanganType>('MASUK');
   const [filterKategori, setFilterKategori] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Cancellation modal state
+  const [cancelModal, setCancelModal] = useState<{
+    isOpen: boolean;
+    id: string;
+    keterangan: string;
+    reason: string;
+  }>({
+    isOpen: false,
+    id: '',
+    keterangan: '',
+    reason: ''
+  });
 
   // Form input state
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -32,12 +51,18 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
   const defaultMasukCategories = ['SPP', 'Donasi', 'Infaq', 'Bantuan', 'Pendapatan lain'];
   const defaultKeluarCategories = ['Gaji', 'Operasional', 'ATK', 'Kegiatan', 'Perawatan'];
 
+  // Categories from KategoriDana sheet/state
+  const dynamicKatNames = kategoriDana
+    .filter(kd => kd.status_aktif !== false)
+    .map(kd => kd.nama_kategori);
+
   // Aggregated existing categories from records
   const existingCategories = Array.from(new Set(
     keuangan.filter(k => k.jenis === activeTab).map(k => k.kategori)
   ));
   const availableCategories = Array.from(new Set([
     ...(activeTab === 'MASUK' ? defaultMasukCategories : defaultKeluarCategories),
+    ...dynamicKatNames,
     ...existingCategories
   ]));
 
@@ -66,6 +91,13 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
       return;
     }
 
+    if (isCustomKategori && onAddKategoriDana && !dynamicKatNames.includes(finalKategori)) {
+      onAddKategoriDana({
+        nama_kategori: finalKategori,
+        keterangan: `Dibuat via form kas ${activeTab.toLowerCase()}`
+      });
+    }
+
     onAddKeuangan({
       tanggal: formTanggal,
       jenis: activeTab,
@@ -79,6 +111,20 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
     setIsModalOpen(false);
   };
 
+  const handleConfirmCancel = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cancelModal.reason.trim()) {
+      alert('Tuliskan alasan pembatalan transaksi!');
+      return;
+    }
+
+    if (onCancelKeuangan && cancelModal.id) {
+      onCancelKeuangan(cancelModal.id, cancelModal.reason.trim());
+    }
+
+    setCancelModal({ isOpen: false, id: '', keterangan: '', reason: '' });
+  };
+
   // Filtered List
   const filteredList = keuangan.filter(k => {
     const matchType = k.jenis === activeTab;
@@ -87,11 +133,12 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
     return matchType && matchKat && matchSearch;
   });
 
-  const totalFiltered = filteredList.reduce((a, b) => a + b.nominal, 0);
+  const totalFiltered = filteredList.filter(k => k.status !== 'CANCEL').reduce((a, b) => a + b.nominal, 0);
 
-  // Overall totals
-  const totalMasukAll = keuangan.filter(k => k.jenis === 'MASUK').reduce((a, b) => a + b.nominal, 0);
-  const totalKeluarAll = keuangan.filter(k => k.jenis === 'KELUAR').reduce((a, b) => a + b.nominal, 0);
+  // Overall totals (EXCLUDING cancelled records for true balance)
+  const validKeuangan = keuangan.filter(k => k.status !== 'CANCEL');
+  const totalMasukAll = validKeuangan.filter(k => k.jenis === 'MASUK').reduce((a, b) => a + b.nominal, 0);
+  const totalKeluarAll = validKeuangan.filter(k => k.jenis === 'KELUAR').reduce((a, b) => a + b.nominal, 0);
   const saldoKas = totalMasukAll - totalKeluarAll;
 
   const formatRupiah = (v: number) => 'Rp ' + (v || 0).toLocaleString('id-ID');
@@ -183,7 +230,7 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
           </div>
 
           <div className="text-xs font-semibold text-slate-500">
-            Subtotal: <strong className="text-slate-900">{formatRupiah(totalFiltered)}</strong>
+            Subtotal Aktif: <strong className="text-slate-900">{formatRupiah(totalFiltered)}</strong>
           </div>
         </div>
 
@@ -223,35 +270,56 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
               <tr className="bg-slate-100 text-slate-700 border-b border-slate-200 font-bold">
                 <th className="p-3 w-12 text-center">No</th>
                 <th className="p-3 w-28">Tanggal</th>
-                <th className="p-3 w-32">Kategori</th>
+                <th className="p-3 w-36">Kategori</th>
                 <th className="p-3">Uraian / Keterangan</th>
                 <th className="p-3 text-right w-36">Nominal</th>
                 <th className="p-3 text-center w-28">Bukti</th>
                 <th className="p-3 w-32">Petugas</th>
+                <th className="p-3 text-center w-24">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-150">
               {filteredList.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-slate-400">
+                  <td colSpan={8} className="p-8 text-center text-slate-400">
                     Belum ada data kas {activeTab === 'MASUK' ? 'masuk' : 'keluar'} pada filter ini.
                   </td>
                 </tr>
               ) : (
                 filteredList.map((rec, idx) => (
-                  <tr key={rec.id_keuangan} className="hover:bg-slate-50 transition-colors">
+                  <tr key={rec.id_keuangan} className={`hover:bg-slate-50 transition-colors ${rec.status === 'CANCEL' ? 'bg-slate-50/60 opacity-70' : ''}`}>
                     <td className="p-3 text-center text-slate-400">{idx + 1}</td>
                     <td className="p-3 whitespace-nowrap text-slate-600 font-medium">{rec.tanggal}</td>
                     <td className="p-3">
-                      <span className={`inline-block px-2 py-0.5 rounded font-bold text-[10px] ${
-                        rec.jenis === 'MASUK' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                      }`}>
-                        {rec.kategori}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={`inline-block px-2 py-0.5 rounded font-bold text-[10px] ${
+                          rec.jenis === 'MASUK' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                        }`}>
+                          {rec.kategori}
+                        </span>
+                        {rec.status === 'CANCEL' && (
+                          <span className="inline-block px-1.5 py-0.5 rounded font-bold text-[9px] bg-rose-100 text-rose-700 border border-rose-200">
+                            BATAL
+                          </span>
+                        )}
+                      </div>
                     </td>
-                    <td className="p-3 text-slate-800 font-medium">{rec.keterangan}</td>
+                    <td className="p-3">
+                      <div className={rec.status === 'CANCEL' ? 'line-through text-slate-400' : 'text-slate-800 font-medium'}>
+                        {rec.keterangan}
+                      </div>
+                      {rec.status === 'CANCEL' && rec.alasan_batal && (
+                        <div className="text-[10px] text-rose-600 font-medium mt-0.5">
+                          Alasan: {rec.alasan_batal}
+                        </div>
+                      )}
+                    </td>
                     <td className={`p-3 text-right font-extrabold ${
-                      rec.jenis === 'MASUK' ? 'text-emerald-800' : 'text-rose-700'
+                      rec.status === 'CANCEL'
+                        ? 'line-through text-slate-400'
+                        : rec.jenis === 'MASUK'
+                        ? 'text-emerald-800'
+                        : 'text-rose-700'
                     }`}>
                       {formatRupiah(rec.nominal)}
                     </td>
@@ -271,6 +339,25 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
                       )}
                     </td>
                     <td className="p-3 text-slate-500">{rec.petugas || operatorName}</td>
+                    <td className="p-3 text-center">
+                      {rec.status === 'CANCEL' ? (
+                        <span className="text-[10px] text-slate-400 italic">Batal</span>
+                      ) : onCancelKeuangan ? (
+                        <button
+                          type="button"
+                          onClick={() => setCancelModal({
+                            isOpen: true,
+                            id: rec.id_keuangan,
+                            keterangan: rec.keterangan,
+                            reason: ''
+                          })}
+                          className="px-2 py-1 text-[10px] font-bold text-rose-600 hover:text-white hover:bg-rose-600 border border-rose-200 hover:border-rose-600 rounded-lg transition-colors cursor-pointer"
+                          title="Batalkan transaksi kas ini dengan mencantumkan alasan"
+                        >
+                          Batalkan
+                        </button>
+                      ) : null}
+                    </td>
                   </tr>
                 ))
               )}
@@ -294,6 +381,12 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
                   Bendahara dapat memilih kategori yang ada atau membuat kategori sendiri
                 </p>
               </div>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="text-white/80 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
             <form onSubmit={handleSave} className="p-6 space-y-4">
@@ -410,6 +503,67 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
                   }`}
                 >
                   Simpan Transaksi Kas
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Cancellation Modal */}
+      {cancelModal.isOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="p-5 bg-rose-800 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-300" />
+                <h3 className="font-bold text-base">Batalkan Transaksi Kas</h3>
+              </div>
+              <button
+                onClick={() => setCancelModal({ isOpen: false, id: '', keterangan: '', reason: '' })}
+                className="text-white/80 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmCancel} className="p-6 space-y-4">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700">
+                <p className="font-semibold text-slate-900 mb-1">Transaksi yang dibatalkan:</p>
+                <p className="italic text-slate-600">{cancelModal.keterangan}</p>
+                <p className="text-[10px] text-slate-500 mt-1 font-mono">ID: {cancelModal.id}</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Alasan Pembatalan <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  value={cancelModal.reason}
+                  onChange={(e) => setCancelModal({ ...cancelModal, reason: e.target.value })}
+                  placeholder="Contoh: Salah input nominal / nota dibatalkan / transaksi duplikat..."
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:bg-white"
+                />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Status akan diubah menjadi CANCEL dan tidak lagi dihitung dalam total kas masuk/keluar.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setCancelModal({ isOpen: false, id: '', keterangan: '', reason: '' })}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+                >
+                  Tutup
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 text-xs font-bold text-white bg-rose-700 hover:bg-rose-800 rounded-xl shadow-xs cursor-pointer"
+                >
+                  Konfirmasi Pembatalan
                 </button>
               </div>
             </form>
