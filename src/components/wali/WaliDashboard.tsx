@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Student, Transaction, SchoolSetting, UserAccount, Announcement } from '../../types';
 import { PrintMode } from '../PrintReportView';
+import { calculateStudentSppStatus } from '../../utils/sppLogic';
 import {
   GraduationCap,
   Heart,
@@ -48,16 +49,19 @@ export const WaliDashboard: React.FC<WaliDashboardProps> = ({
   // Strict filter: transactions exclusively for this student's NISN
   const myTransactions = (transactions || []).filter(t => student && t.nisn === student.nisn && t.status !== 'CANCEL');
 
+  // Automatic dynamic SPP calculation following the current calendar month
+  const sppSummary = useMemo(() => {
+    return calculateStudentSppStatus(student, transactions, setting.tahun_ajaran);
+  }, [student, transactions, setting.tahun_ajaran]);
+
   // Calculations
-  const totalTagihan = myTransactions.reduce((a, b) => a + (b.nominal_tagihan || 0), 0);
-  const totalDibayar = myTransactions.reduce((a, b) => a + (b.nominal_bayar || 0), 0);
-  const totalKekurangan = myTransactions
-    .filter(t => t.status === 'KURANG')
-    .reduce((a, b) => a + (b.sisa || 0), 0);
+  const totalTagihan = sppSummary.grandTotalTagihan;
+  const totalDibayar = sppSummary.grandTotalDibayar;
+  const totalKekurangan = sppSummary.grandTotalSisa;
 
   // Status breakdown
-  const countLunas = myTransactions.filter(t => t.status === 'LUNAS').length;
-  const countKurang = myTransactions.filter(t => t.status === 'KURANG').length;
+  const countLunas = sppSummary.paidMonths.length;
+  const countKurang = sppSummary.unpaidDueMonths.length;
 
   const paymentRatioData = [
     { name: 'Sudah Dibayar', value: totalDibayar, color: '#059669' },
@@ -99,8 +103,13 @@ export const WaliDashboard: React.FC<WaliDashboardProps> = ({
               <span className="bg-white/10 px-3 py-1 rounded-lg border border-white/15">
                 <span className="text-emerald-300">Wali:</span> <strong className="text-white">{student.nama_wali}</strong>
               </span>
-              <span className="bg-white/10 px-3 py-1 rounded-lg border border-white/15">
-                <span className="text-emerald-300">Status:</span> <strong className="text-emerald-300">Aktif</strong>
+              <span className={`px-3 py-1 rounded-lg border ${
+                sppSummary.isLunas
+                  ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-200'
+                  : 'bg-rose-500/20 border-rose-400/40 text-rose-200'
+              }`}>
+                <span className={sppSummary.isLunas ? 'text-emerald-300' : 'text-rose-300'}>Status SPP:</span>{' '}
+                <strong className="text-white">{sppSummary.statusLabel}</strong>
               </span>
             </div>
 
@@ -300,6 +309,15 @@ export const WaliDashboard: React.FC<WaliDashboardProps> = ({
               "Terima kasih Ayah/Bunda sudah terus mendampingi pendidikan Ananda. Sedikit demi sedikit pembayaran akan membantu perjalanan belajar Ananda menjadi lebih baik."
             </p>
             <div className="mt-2 text-xs font-semibold text-amber-900">
+              {sppSummary.unpaidDueMonths.length > 0 && (
+                <span className="mr-2">
+                  Bulan menunggak:{' '}
+                  <span className="font-extrabold text-rose-700">
+                    {sppSummary.monthsNunggakFullLabels.join(', ')}
+                  </span>{' '}
+                  &bull;
+                </span>
+              )}
               Sisa kekurangan saat ini: <span className="font-extrabold text-rose-700">{formatRupiah(totalKekurangan)}</span>
             </div>
           </div>
@@ -311,20 +329,22 @@ export const WaliDashboard: React.FC<WaliDashboardProps> = ({
         <div className="bg-white p-5 rounded-xl border border-slate-200/90 shadow-xs">
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Tagihan Terbit</span>
           <div className="text-xl font-extrabold text-slate-900 mt-2">{formatRupiah(totalTagihan)}</div>
-          <p className="text-xs text-slate-500 mt-1">SPP bulanan & biaya program</p>
+          <p className="text-xs text-slate-500 mt-1">
+            SPP ({sppSummary.dueMonths.length} bulan berjalan) & program
+          </p>
         </div>
 
         <div className="bg-white p-5 rounded-xl border border-slate-200/90 shadow-xs">
           <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Sudah Terbayar</span>
           <div className="text-xl font-extrabold text-emerald-700 mt-2">{formatRupiah(totalDibayar)}</div>
-          <p className="text-xs text-emerald-600 mt-1 font-semibold">{countLunas} Transaksi lunas tuntas</p>
+          <p className="text-xs text-emerald-600 mt-1 font-semibold">{countLunas} Bulan SPP lunas tuntas</p>
         </div>
 
         <div className="bg-white p-5 rounded-xl border border-slate-200/90 shadow-xs">
           <span className="text-xs font-bold text-rose-800 uppercase tracking-wider">Sisa Kekurangan</span>
           <div className="text-xl font-extrabold text-rose-700 mt-2">{formatRupiah(totalKekurangan)}</div>
           <p className="text-xs text-slate-500 mt-1">
-            {totalKekurangan === 0 ? 'Alhamdulillah, pembayaran lunas' : `${countKurang} Transaksi perlu diselesaikan`}
+            {totalKekurangan === 0 ? 'Lunas sampai bulan berjalan' : sppSummary.statusLabel}
           </p>
         </div>
       </div>
@@ -333,10 +353,54 @@ export const WaliDashboard: React.FC<WaliDashboardProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Riwayat Mutasi (7 Cols) */}
         <div className="lg:col-span-8 bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <h3 className="font-bold text-slate-900 text-base">Riwayat Pembayaran Ananda</h3>
               <p className="text-xs text-slate-500">Kuitansi sah yang diterbitkan oleh Bendahara Sekolah</p>
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${
+                sppSummary.isLunas
+                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                  : 'bg-rose-100 text-rose-800 border border-rose-200'
+              }`}>
+                {sppSummary.statusLabel}
+              </span>
+            </div>
+          </div>
+
+          {/* Status SPP per Bulan dalam Tahun Ajaran */}
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80">
+            <div className="text-[11px] font-bold text-slate-600 uppercase tracking-wide mb-2 flex items-center justify-between">
+              <span>Status Kewajiban SPP per Bulan (TA {sppSummary.academicYear})</span>
+              <span className="text-[10px] text-slate-400 font-normal lowercase">update otomatis per bulan berjalan</span>
+            </div>
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+              {sppSummary.allMonths.map((m) => (
+                <div
+                  key={m.label}
+                  className={`p-2 rounded-lg border text-center transition-all ${
+                    m.status === 'LUNAS'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : m.status === 'KURANG'
+                      ? 'bg-amber-50 border-amber-300 text-amber-900'
+                      : m.status === 'BELUM_BAYAR'
+                      ? 'bg-rose-50 border-rose-200 text-rose-800'
+                      : 'bg-white border-slate-200 text-slate-400'
+                  }`}
+                >
+                  <div className="text-[11px] font-bold truncate">{m.monthName}</div>
+                  <div className="text-[9px] font-medium mt-0.5">
+                    {m.status === 'LUNAS'
+                      ? 'LUNAS'
+                      : m.status === 'KURANG'
+                      ? `Kurang Rp${(m.sisa / 1000).toFixed(0)}rb`
+                      : m.status === 'BELUM_BAYAR'
+                      ? 'MENUNGGAK'
+                      : 'Belum Tempo'}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 

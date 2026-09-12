@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { SchoolSetting, Transaction, KeuanganRecord, Student } from '../types';
+import { calculateStudentSppStatus, calculateAllStudentsSppSummary } from '../utils/sppLogic';
 import { Printer, X, Download, FileText, CheckCircle2 } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
 
@@ -345,60 +346,82 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
         )}
 
         {/* 3. REKAP TUNGGAKAN */}
-        {mode === 'REKAP_TUNGGAKAN' && (
-          <div>
-            <div className="text-center mb-6">
-              <h2 className="text-lg font-bold text-slate-900 uppercase underline tracking-wide text-rose-900">
-                LAPORAN REKAPITULASI TUNGGAKAN MURID
-              </h2>
-              <p className="text-xs text-slate-600 mt-1">Daftar Murid yang Memiliki Kekurangan Pembayaran | TA {setting.tahun_ajaran}</p>
-            </div>
+        {mode === 'REKAP_TUNGGAKAN' && (() => {
+          const sppSummaryAll = calculateAllStudentsSppSummary(safeStudents, safeTransactions, setting.tahun_ajaran);
+          const listTunggakan = sppSummaryAll.studentsWithTunggakan;
 
-            <table className="w-full border-collapse border border-slate-300 text-xs mb-6">
-              <thead>
-                <tr className="bg-slate-800 text-white">
-                  <th className="border border-slate-300 p-2 text-center w-10">No</th>
-                  <th className="border border-slate-300 p-2 text-left">Nama Murid & NISN</th>
-                  <th className="border border-slate-300 p-2 text-left">Kelas</th>
-                  <th className="border border-slate-300 p-2 text-left">Nama Wali / No. WA</th>
-                  <th className="border border-slate-300 p-2 text-left">Uraian Tagihan</th>
-                  <th className="border border-slate-300 p-2 text-right">Tagihan</th>
-                  <th className="border border-slate-300 p-2 text-right">Sudah Bayar</th>
-                  <th className="border border-slate-300 p-2 text-right text-rose-300">Sisa Tunggakan</th>
-                </tr>
-              </thead>
-              <tbody>
-                {safeTransactions.filter(t => t.status === 'KURANG' && t.sisa > 0).map((trx, idx) => {
-                  const st = safeStudents.find(s => s.nisn === trx.nisn);
-                  return (
-                    <tr key={trx.id_transaksi} className={idx % 2 === 1 ? 'bg-slate-50' : 'bg-white'}>
-                      <td className="border border-slate-300 p-2 text-center">{idx + 1}</td>
-                      <td className="border border-slate-300 p-2">
-                        <div className="font-bold text-slate-900">{trx.nama_siswa || st?.nama}</div>
-                        <div className="text-slate-500 font-mono text-[10px]">NISN: {trx.nisn}</div>
+          return (
+            <div>
+              <div className="text-center mb-6">
+                <h2 className="text-lg font-bold text-slate-900 uppercase underline tracking-wide text-rose-900">
+                  LAPORAN REKAPITULASI TUNGGAKAN MURID
+                </h2>
+                <p className="text-xs text-slate-600 mt-1">Daftar Murid yang Memiliki Tunggakan Sampai Bulan Berjalan | TA {setting.tahun_ajaran}</p>
+              </div>
+
+              <table className="w-full border-collapse border border-slate-300 text-xs mb-6">
+                <thead>
+                  <tr className="bg-slate-800 text-white">
+                    <th className="border border-slate-300 p-2 text-center w-10">No</th>
+                    <th className="border border-slate-300 p-2 text-left">Nama Murid & NISN</th>
+                    <th className="border border-slate-300 p-2 text-left">Kelas</th>
+                    <th className="border border-slate-300 p-2 text-left">Nama Wali / No. WA</th>
+                    <th className="border border-slate-300 p-2 text-left">Uraian Kewajiban / Tunggakan</th>
+                    <th className="border border-slate-300 p-2 text-right">Tagihan</th>
+                    <th className="border border-slate-300 p-2 text-right">Sudah Bayar</th>
+                    <th className="border border-slate-300 p-2 text-right text-rose-300">Sisa Tunggakan</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {listTunggakan.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="border border-slate-300 p-6 text-center text-slate-500 font-medium">
+                        Alhamdulillah, seluruh murid telah lunas sampai bulan berjalan.
                       </td>
-                      <td className="border border-slate-300 p-2">{trx.kelas || st?.kelas}</td>
-                      <td className="border border-slate-300 p-2">
-                        <div>{st?.nama_wali || '-'}</div>
-                        <div className="text-emerald-700 text-[10px]">{st?.no_hp || '-'}</div>
-                      </td>
-                      <td className="border border-slate-300 p-2">{trx.jenis}</td>
-                      <td className="border border-slate-300 p-2 text-right">{formatRupiah(trx.nominal_tagihan)}</td>
-                      <td className="border border-slate-300 p-2 text-right text-emerald-800">{formatRupiah(trx.nominal_bayar)}</td>
-                      <td className="border border-slate-300 p-2 text-right font-bold text-rose-700">{formatRupiah(trx.sisa)}</td>
                     </tr>
-                  );
-                })}
-                <tr className="bg-rose-50 font-bold text-slate-900">
-                  <td colSpan={7} className="border border-slate-300 p-2 text-right uppercase text-rose-900">Total Akumulasi Tunggakan</td>
-                  <td className="border border-slate-300 p-2 text-right text-rose-800 font-extrabold">
-                    {formatRupiah(transactions.filter(t => t.status === 'KURANG').reduce((acc, c) => acc + (c.sisa || 0), 0))}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        )}
+                  ) : (
+                    listTunggakan.map((item, idx) => {
+                      const st = item.student;
+                      const uraianParts: string[] = [];
+                      if (item.unpaidDueMonths.length > 0) {
+                        uraianParts.push(`SPP (${item.monthsNunggakFullLabels.join(', ')})`);
+                      }
+                      if (item.nonSppSisa > 0) {
+                        uraianParts.push(`Tagihan Lainnya`);
+                      }
+                      const uraian = uraianParts.join(' + ') || 'SPP Bulanan';
+
+                      return (
+                        <tr key={st.id_siswa || st.nisn} className={idx % 2 === 1 ? 'bg-slate-50' : 'bg-white'}>
+                          <td className="border border-slate-300 p-2 text-center">{idx + 1}</td>
+                          <td className="border border-slate-300 p-2">
+                            <div className="font-bold text-slate-900">{st.nama}</div>
+                            <div className="text-slate-500 font-mono text-[10px]">NISN: {st.nisn}</div>
+                          </td>
+                          <td className="border border-slate-300 p-2">{st.kelas}</td>
+                          <td className="border border-slate-300 p-2">
+                            <div>{st.nama_wali || '-'}</div>
+                            <div className="text-emerald-700 text-[10px]">{st.no_hp || '-'}</div>
+                          </td>
+                          <td className="border border-slate-300 p-2 font-medium text-slate-800">{uraian}</td>
+                          <td className="border border-slate-300 p-2 text-right">{formatRupiah(item.grandTotalTagihan)}</td>
+                          <td className="border border-slate-300 p-2 text-right text-emerald-800">{formatRupiah(item.grandTotalDibayar)}</td>
+                          <td className="border border-slate-300 p-2 text-right font-bold text-rose-700">{formatRupiah(item.grandTotalSisa)}</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                  <tr className="bg-rose-50 font-bold text-slate-900">
+                    <td colSpan={7} className="border border-slate-300 p-2 text-right uppercase text-rose-900">Total Akumulasi Tunggakan</td>
+                    <td className="border border-slate-300 p-2 text-right text-rose-800 font-extrabold">
+                      {formatRupiah(sppSummaryAll.totalTunggakanAll)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
 
         {/* 4. LAPORAN UANG MASUK & KELUAR */}
         {(mode === 'LAPORAN_MASUK' || mode === 'LAPORAN_KELUAR' || mode === 'LAPORAN_KAS') && (
@@ -515,31 +538,45 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {['Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni'].map((bln, i) => {
-                  const match = safeTransactions.find(t => student && t.nisn === student.nisn && t.status !== 'CANCEL' && (t.bulan?.toLowerCase().includes(bln.toLowerCase()) || t.jenis?.toLowerCase().includes(bln.toLowerCase())));
-                  return (
-                    <tr key={bln} className={i % 2 === 1 ? 'bg-slate-50' : 'bg-white'}>
-                      <td className="border border-slate-300 p-2 text-center">{i + 1}</td>
-                      <td className="border border-slate-300 p-2 font-medium">{bln} {i < 6 ? '2026' : '2027'}</td>
-                      <td className="border border-slate-300 p-2 text-center">{match?.tanggal || '-'}</td>
-                      <td className="border border-slate-300 p-2 text-right font-semibold">
-                        {match ? formatRupiah(match.nominal_bayar) : '-'}
-                      </td>
-                      <td className="border border-slate-300 p-2 text-center">
-                        {match ? (
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${match.status === 'LUNAS' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-                            {match.status}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400 italic">Belum</span>
-                        )}
-                      </td>
-                      <td className="border border-slate-300 p-2 text-center text-[10px] text-slate-500 font-mono">
-                        {match?.petugas ? 'VALID' : ''}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {(() => {
+                  const sppStatus = calculateStudentSppStatus(student, safeTransactions, setting.tahun_ajaran);
+                  return sppStatus.allMonths.map((m, i) => {
+                    const match = m.transactions[0];
+                    return (
+                      <tr key={m.label} className={i % 2 === 1 ? 'bg-slate-50' : 'bg-white'}>
+                        <td className="border border-slate-300 p-2 text-center">{i + 1}</td>
+                        <td className="border border-slate-300 p-2 font-medium">{m.label}</td>
+                        <td className="border border-slate-300 p-2 text-center">{match?.tanggal || '-'}</td>
+                        <td className="border border-slate-300 p-2 text-right font-semibold">
+                          {m.dibayar > 0 ? formatRupiah(m.dibayar) : '-'}
+                        </td>
+                        <td className="border border-slate-300 p-2 text-center">
+                          {m.status === 'LUNAS' && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                              LUNAS
+                            </span>
+                          )}
+                          {m.status === 'KURANG' && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
+                              KURANG ({formatRupiah(m.sisa)})
+                            </span>
+                          )}
+                          {m.status === 'BELUM_BAYAR' && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800">
+                              MENUNGGAK
+                            </span>
+                          )}
+                          {m.status === 'BELUM_JATUH_TEMPO' && (
+                            <span className="text-slate-400 italic">Belum Jatuh Tempo</span>
+                          )}
+                        </td>
+                        <td className="border border-slate-300 p-2 text-center text-[10px] text-slate-500 font-mono">
+                          {m.dibayar > 0 ? (match?.petugas ? 'VALID' : 'LUNAS') : '-'}
+                        </td>
+                      </tr>
+                    );
+                  });
+                })()}
               </tbody>
             </table>
           </div>

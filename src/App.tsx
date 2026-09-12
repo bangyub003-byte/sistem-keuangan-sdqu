@@ -690,12 +690,9 @@ export default function App() {
 
           {/* Footer */}
           <footer className="mt-auto bg-white border-t border-slate-200/90 py-4 px-6 text-center text-xs text-slate-500">
-            <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-2">
+            <div className="max-w-7xl mx-auto flex justify-center items-center">
               <span className="font-medium text-slate-700">
                 &copy; {new Date().getFullYear()} {setting.nama_sekolah} &bull; Sistem Informasi Keuangan Sekolah
-              </span>
-              <span className="text-[11px] text-slate-400">
-                Terhubung dengan Google Spreadsheet &bull; Google Drive &bull; Google Apps Script
               </span>
             </div>
           </footer>

@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Student, Transaction, KeuanganRecord, ActivityLog, SchoolSetting } from '../../types';
+import { calculateAllStudentsSppSummary } from '../../utils/sppLogic';
 import { Users, CreditCard, AlertTriangle, ArrowUpRight, ArrowDownRight, Wallet, Calendar, Bell, ChevronRight } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend, PieChart, Pie, Cell } from 'recharts';
 
@@ -27,10 +28,14 @@ export const DashboardMenu: React.FC<DashboardMenuProps> = ({
     .filter(t => t.status !== 'CANCEL')
     .reduce((sum, t) => sum + (t.nominal_bayar || 0), 0);
 
-  // Jumlah Tunggakan (transactions with status KURANG)
-  const totalTunggakan = transactions
-    .filter(t => t.status === 'KURANG')
-    .reduce((sum, t) => sum + (t.sisa || 0), 0);
+  // Dynamic SPP Calculation following the current month
+  const sppAllSummary = useMemo(() => {
+    return calculateAllStudentsSppSummary(students, transactions, setting.tahun_ajaran);
+  }, [students, transactions, setting.tahun_ajaran]);
+
+  // Jumlah Tunggakan (akumulasi santri sampai bulan berjalan)
+  const totalTunggakan = sppAllSummary.totalTunggakanAll;
+  const countSantriNunggak = sppAllSummary.countSantriNunggak;
 
   // Keuangan Kas Total
   const totalMasukKas = keuangan
@@ -58,12 +63,12 @@ export const DashboardMenu: React.FC<DashboardMenuProps> = ({
   });
 
   // Chart Data 2: Status Pembayaran Santri
-  const countLunas = transactions.filter(t => t.status === 'LUNAS').length;
-  const countKurang = transactions.filter(t => t.status === 'KURANG').length;
+  const countLunas = sppAllSummary.countSantriLunas;
+  const countKurang = sppAllSummary.countSantriNunggak;
   const countCancel = transactions.filter(t => t.status === 'CANCEL').length;
   const paymentStatusData = [
-    { name: 'Lunas', value: countLunas, color: '#059669' },
-    { name: 'Kurang Bayar', value: countKurang, color: '#f59e0b' },
+    { name: 'Lunas Bulan Berjalan', value: countLunas, color: '#059669' },
+    { name: 'Menunggak', value: countKurang, color: '#f59e0b' },
     { name: 'Dibatalkan', value: countCancel, color: '#f43f5e' }
   ];
 
@@ -147,7 +152,7 @@ export const DashboardMenu: React.FC<DashboardMenuProps> = ({
           </div>
           <div className="text-xl font-extrabold text-rose-700">{formatRupiah(totalTunggakan)}</div>
           <p className="text-xs text-rose-600 font-medium mt-1 flex items-center gap-1">
-            <span>{countKurang} Transaksi belum lunas</span>
+            <span>{countSantriNunggak} Santri menunggak bulan berjalan</span>
             <ChevronRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
           </p>
         </div>

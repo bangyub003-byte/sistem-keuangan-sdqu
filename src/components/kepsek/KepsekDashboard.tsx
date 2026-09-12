@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Student, Transaction, KeuanganRecord, SchoolSetting } from '../../types';
 import { PrintMode } from '../PrintReportView';
+import { calculateAllStudentsSppSummary } from '../../utils/sppLogic';
 import { School, TrendingUp, AlertTriangle, Printer, Calendar, Wallet, Users, CreditCard, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend, PieChart, Pie, Cell } from 'recharts';
 
@@ -29,14 +30,17 @@ export const KepsekDashboard: React.FC<KepsekDashboardProps> = ({
   const [filterKasKategori, setFilterKasKategori] = useState('');
 
   const activeStudents = students.filter(s => s.status_aktif);
+
+  // Automatic dynamic SPP calculation following the current calendar month across all students
+  const sppAllSummary = useMemo(() => {
+    return calculateAllStudentsSppSummary(students, transactions, setting.tahun_ajaran);
+  }, [students, transactions, setting.tahun_ajaran]);
   
   const totalBayarMasuk = transactions
     .filter(t => t.status !== 'CANCEL')
     .reduce((sum, t) => sum + (t.nominal_bayar || 0), 0);
 
-  const totalTunggakan = transactions
-    .filter(t => t.status === 'KURANG')
-    .reduce((sum, t) => sum + (t.sisa || 0), 0);
+  const totalTunggakan = sppAllSummary.totalTunggakanAll;
 
   const validKeuangan = keuangan.filter(k => k.status !== 'CANCEL');
 
@@ -58,11 +62,11 @@ export const KepsekDashboard: React.FC<KepsekDashboardProps> = ({
     Keluar: validKeuangan.filter(k => k.kategori === cat && k.jenis === 'KELUAR').reduce((a, b) => a + b.nominal, 0)
   }));
 
-  const countLunas = transactions.filter(t => t.status === 'LUNAS').length;
-  const countKurang = transactions.filter(t => t.status === 'KURANG').length;
+  const countLunas = sppAllSummary.countSantriLunas;
+  const countKurang = sppAllSummary.countSantriNunggak;
   const paymentStatusData = [
-    { name: 'Lunas', value: countLunas, color: '#059669' },
-    { name: 'Kurang Bayar', value: countKurang, color: '#f59e0b' }
+    { name: 'Lunas Bulan Berjalan', value: countLunas, color: '#059669' },
+    { name: 'Menunggak', value: countKurang, color: '#e11d48' }
   ];
 
   const formatRupiah = (val: number) => 'Rp ' + (val || 0).toLocaleString('id-ID');
@@ -132,7 +136,7 @@ export const KepsekDashboard: React.FC<KepsekDashboardProps> = ({
         <div className="bg-white p-5 rounded-xl border border-slate-200/90 shadow-xs">
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tunggakan Santri</span>
           <div className="text-xl font-extrabold text-rose-700 mt-2">{formatRupiah(totalTunggakan)}</div>
-          <p className="text-xs text-rose-600 mt-1 font-semibold">{countKurang} Transaksi belum tuntas</p>
+          <p className="text-xs text-rose-600 mt-1 font-semibold">{countKurang} Santri menunggak bulan berjalan</p>
         </div>
 
         <div className="bg-white p-5 rounded-xl border border-slate-200/90 shadow-xs">
@@ -219,7 +223,7 @@ export const KepsekDashboard: React.FC<KepsekDashboardProps> = ({
                         <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(value: any, name: any) => [`${value} Transaksi`, name]} />
+                    <Tooltip formatter={(value: any, name: any) => [`${value} Santri`, name]} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -228,15 +232,15 @@ export const KepsekDashboard: React.FC<KepsekDashboardProps> = ({
             <div className="space-y-2 border-t border-slate-100 pt-3 text-xs">
               <div className="flex justify-between items-center">
                 <span className="flex items-center gap-1.5 text-slate-600">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span> Lunas Selesai
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span> Lunas Bulan Berjalan
                 </span>
-                <span className="font-bold text-slate-800">{countLunas} Transaksi</span>
+                <span className="font-bold text-slate-800">{countLunas} Santri</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="flex items-center gap-1.5 text-slate-600">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Memiliki Kekurangan
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-600"></span> Menunggak SPP
                 </span>
-                <span className="font-bold text-slate-800">{countKurang} Transaksi</span>
+                <span className="font-bold text-slate-800">{countKurang} Santri</span>
               </div>
             </div>
           </div>

@@ -502,8 +502,8 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
       {/* Input Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
-            <div className={`p-5 text-white flex items-center justify-between ${
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
+            <div className={`p-5 text-white flex items-center justify-between shrink-0 ${
               activeTab === 'MASUK' ? 'bg-emerald-800' : 'bg-rose-800'
             }`}>
               <div>
@@ -522,178 +522,180 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSave} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    Tanggal Transaksi
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={formTanggal}
-                    onChange={(e) => setFormTanggal(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    Nominal (Rp) <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    value={formNominal || ''}
-                    onChange={(e) => setFormNominal(Number(e.target.value))}
-                    placeholder="Contoh: 1500000"
-                    className="w-full px-3 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
-                  />
-                </div>
-              </div>
-
-              {/* Kategori with Custom Category feature */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-bold text-slate-700 uppercase">
-                    Kategori {activeTab === 'MASUK' ? 'Pemasukan' : 'Pengeluaran'}
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setIsCustomKategori(!isCustomKategori)}
-                    className="text-[10px] font-bold text-emerald-700 hover:underline cursor-pointer"
-                  >
-                    {isCustomKategori ? 'Pilih dari Kategori Ada' : '+ Buat Kategori Baru'}
-                  </button>
+            <form onSubmit={handleSave} className="flex flex-col flex-1 overflow-hidden min-h-0">
+              <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                      Tanggal Transaksi
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={formTanggal}
+                      onChange={(e) => setFormTanggal(e.target.value)}
+                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                      Nominal (Rp) <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      value={formNominal || ''}
+                      onChange={(e) => setFormNominal(Number(e.target.value))}
+                      placeholder="Contoh: 1500000"
+                      className="w-full px-3 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
+                    />
+                  </div>
                 </div>
 
-                {isCustomKategori ? (
-                  <input
-                    type="text"
-                    required
-                    value={customKategoriInput}
-                    onChange={(e) => setCustomKategoriInput(e.target.value)}
-                    placeholder="Tulis nama kategori baru..."
-                    className="w-full px-3 py-2 text-xs bg-white border border-emerald-500 ring-1 ring-emerald-500 rounded-lg focus:outline-hidden"
-                  />
-                ) : (
-                  <select
-                    value={formKategori}
-                    onChange={(e) => setFormKategori(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
-                  >
-                    {availableCategories.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-                )}
-              </div>
-
-              {/* Sumber Dana (Diambil dari Dana - WAJIB saat Kas Keluar) */}
-              {activeTab === 'KELUAR' && (
+                {/* Kategori with Custom Category feature */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-xs font-bold text-slate-700 uppercase">
-                      Diambil dari Dana <span className="text-rose-500">*</span>
+                      Kategori {activeTab === 'MASUK' ? 'Pemasukan' : 'Pengeluaran'}
                     </label>
                     <button
                       type="button"
-                      onClick={() => setIsAddingNewSumberDana(!isAddingNewSumberDana)}
-                      className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer"
+                      onClick={() => setIsCustomKategori(!isCustomKategori)}
+                      className="text-[10px] font-bold text-emerald-700 hover:underline cursor-pointer"
                     >
-                      {isAddingNewSumberDana ? 'Pilih dari Dropdown' : '+ Tambah Kategori Baru'}
+                      {isCustomKategori ? 'Pilih dari Kategori Ada' : '+ Buat Kategori Baru'}
                     </button>
                   </div>
 
-                  {isAddingNewSumberDana ? (
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={newSumberDanaInput}
-                        onChange={(e) => setNewSumberDanaInput(e.target.value)}
-                        placeholder="Tulis nama kategori sumber dana baru..."
-                        className="flex-1 px-3 py-2 text-xs bg-white border border-emerald-500 ring-1 ring-emerald-500 rounded-lg focus:outline-hidden"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleAddNewSumberDana}
-                        disabled={!newSumberDanaInput.trim()}
-                        className="px-3 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 rounded-lg cursor-pointer transition-colors"
-                      >
-                        Tambah
-                      </button>
-                    </div>
+                  {isCustomKategori ? (
+                    <input
+                      type="text"
+                      required
+                      value={customKategoriInput}
+                      onChange={(e) => setCustomKategoriInput(e.target.value)}
+                      placeholder="Tulis nama kategori baru..."
+                      className="w-full px-3 py-2 text-xs bg-white border border-emerald-500 ring-1 ring-emerald-500 rounded-lg focus:outline-hidden"
+                    />
                   ) : (
                     <select
-                      required
-                      value={selectedSumberDana}
-                      onChange={(e) => setSelectedSumberDana(e.target.value)}
+                      value={formKategori}
+                      onChange={(e) => setFormKategori(e.target.value)}
                       className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
                     >
-                      <option value="" disabled>-- Pilih Sumber Dana --</option>
-                      {activeKategoriList.map(kd => (
-                        <option key={kd.id_kategori} value={kd.id_kategori}>
-                          {kd.nama_kategori}
-                        </option>
+                      {availableCategories.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
                       ))}
                     </select>
                   )}
+                </div>
+
+                {/* Sumber Dana (Diambil dari Dana - WAJIB saat Kas Keluar) */}
+                {activeTab === 'KELUAR' && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-slate-700 uppercase">
+                        Diambil dari Dana <span className="text-rose-500">*</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingNewSumberDana(!isAddingNewSumberDana)}
+                        className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer"
+                      >
+                        {isAddingNewSumberDana ? 'Pilih dari Dropdown' : '+ Tambah Kategori Baru'}
+                      </button>
+                    </div>
+
+                    {isAddingNewSumberDana ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={newSumberDanaInput}
+                          onChange={(e) => setNewSumberDanaInput(e.target.value)}
+                          placeholder="Tulis nama kategori sumber dana baru..."
+                          className="flex-1 px-3 py-2 text-xs bg-white border border-emerald-500 ring-1 ring-emerald-500 rounded-lg focus:outline-hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddNewSumberDana}
+                          disabled={!newSumberDanaInput.trim()}
+                          className="px-3 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 rounded-lg cursor-pointer transition-colors"
+                        >
+                          Tambah
+                        </button>
+                      </div>
+                    ) : (
+                      <select
+                        required
+                        value={selectedSumberDana}
+                        onChange={(e) => setSelectedSumberDana(e.target.value)}
+                        className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
+                      >
+                        <option value="" disabled>-- Pilih Sumber Dana --</option>
+                        {activeKategoriList.map(kd => (
+                          <option key={kd.id_kategori} value={kd.id_kategori}>
+                            {kd.nama_kategori}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Diambil dari pos dana kategori sheet KATEGORI_DANA (mengisi kolom id_kategori di KEUANGAN).
+                    </p>
+                  </div>
+                )}
+
+                {/* Keterangan */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    Uraian / Keterangan Transaksi <span className="text-rose-500">*</span>
+                  </label>
+                  <textarea
+                    rows={2}
+                    required
+                    value={formKeterangan}
+                    onChange={(e) => setFormKeterangan(e.target.value)}
+                    placeholder="Rincian tujuan transaksi / nama donatur / keperluan..."
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
+                  />
+                </div>
+
+                {/* Bukti Transaksi */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    Bukti Transaksi (Link URL / Google Drive)
+                  </label>
+                  <input
+                    type="text"
+                    value={formBukti}
+                    onChange={(e) => setFormBukti(e.target.value)}
+                    placeholder="https://drive.google.com/... atau link foto nota"
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
+                  />
                   <p className="text-[10px] text-slate-400 mt-1">
-                    Diambil dari pos dana kategori sheet KATEGORI_DANA (mengisi kolom id_kategori di KEUANGAN).
+                    File tersimpan di Google Drive terhubung & tautan tercatat di Sheet KEUANGAN.
                   </p>
                 </div>
-              )}
 
-              {/* Keterangan */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                  Uraian / Keterangan Transaksi <span className="text-rose-500">*</span>
-                </label>
-                <textarea
-                  rows={2}
-                  required
-                  value={formKeterangan}
-                  onChange={(e) => setFormKeterangan(e.target.value)}
-                  placeholder="Rincian tujuan transaksi / nama donatur / keperluan..."
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
-                />
+                {/* Petugas Pencatat (Selalu user login saat ini) */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    Petugas Pencatat
+                  </label>
+                  <input
+                    type="text"
+                    readOnly
+                    disabled
+                    value={operatorName || 'Petugas'}
+                    className="w-full px-3 py-2 text-xs font-bold bg-slate-100 text-slate-700 border border-slate-300 rounded-lg cursor-not-allowed select-none"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Otomatis terisi dari nama user akun yang sedang login saat ini.
+                  </p>
+                </div>
               </div>
 
-              {/* Bukti Transaksi */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                  Bukti Transaksi (Link URL / Google Drive)
-                </label>
-                <input
-                  type="text"
-                  value={formBukti}
-                  onChange={(e) => setFormBukti(e.target.value)}
-                  placeholder="https://drive.google.com/... atau link foto nota"
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
-                />
-                <p className="text-[10px] text-slate-400 mt-1">
-                  File tersimpan di Google Drive terhubung & tautan tercatat di Sheet KEUANGAN.
-                </p>
-              </div>
-
-              {/* Petugas Pencatat (Selalu user login saat ini) */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                  Petugas Pencatat
-                </label>
-                <input
-                  type="text"
-                  readOnly
-                  disabled
-                  value={operatorName || 'Petugas'}
-                  className="w-full px-3 py-2 text-xs font-bold bg-slate-100 text-slate-700 border border-slate-300 rounded-lg cursor-not-allowed select-none"
-                />
-                <p className="text-[10px] text-slate-400 mt-1">
-                  Otomatis terisi dari nama user akun yang sedang login saat ini.
-                </p>
-              </div>
-
-              {/* Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
+              {/* Sticky Buttons Footer */}
+              <div className="flex items-center justify-end gap-3 p-4 px-6 border-t border-slate-200 bg-white shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}

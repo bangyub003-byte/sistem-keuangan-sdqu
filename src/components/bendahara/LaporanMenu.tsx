@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Transaction, Student, KeuanganRecord, SchoolSetting } from '../../types';
 import { PrintMode } from '../PrintReportView';
+import { calculateAllStudentsSppSummary } from '../../utils/sppLogic';
 import { Printer, FileSpreadsheet, AlertTriangle, ArrowDownLeft, ArrowUpRight, BookOpen, Calendar, Filter } from 'lucide-react';
 
 interface LaporanMenuProps {
@@ -25,9 +26,12 @@ export const LaporanMenu: React.FC<LaporanMenuProps> = ({
     .filter(t => t.status !== 'CANCEL')
     .reduce((a, b) => a + (b.nominal_bayar || 0), 0);
 
-  const totalTunggakan = transactions
-    .filter(t => t.status === 'KURANG')
-    .reduce((a, b) => a + (b.sisa || 0), 0);
+  const sppAllSummary = useMemo(() => {
+    return calculateAllStudentsSppSummary(students, transactions, setting.tahun_ajaran);
+  }, [students, transactions, setting.tahun_ajaran]);
+
+  const totalTunggakan = sppAllSummary.totalTunggakanAll;
+  const countSantriNunggak = sppAllSummary.countSantriNunggak;
 
   const totalKasMasuk = keuangan
     .filter(k => k.jenis === 'MASUK')
@@ -38,8 +42,6 @@ export const LaporanMenu: React.FC<LaporanMenuProps> = ({
     .reduce((a, b) => a + b.nominal, 0);
 
   const saldoKas = totalKasMasuk - totalKasKeluar;
-
-  const countSantriNunggak = transactions.filter(t => t.status === 'KURANG').length;
 
   const formatRupiah = (v: number) => 'Rp ' + (v || 0).toLocaleString('id-ID');
 
