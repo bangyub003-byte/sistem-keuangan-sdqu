@@ -1,28 +1,42 @@
 import React, { useState } from 'react';
-import { Student } from '../../types';
-import { Plus, Search, Edit3, Trash2, Download, Upload, Filter, Tag, Check, X, UserPlus, Phone, MapPin, Award, CreditCard } from 'lucide-react';
+import { Student, Transaction, SchoolSetting } from '../../types';
+import { Plus, Search, Edit3, Trash2, Download, Upload, Filter, Tag, Check, X, UserPlus, Phone, MapPin, Award, CreditCard, Eye } from 'lucide-react';
+import { SantriDetailModal } from './SantriDetailModal';
+import { INITIAL_SETTING } from '../../data/initialData';
 
 interface SantriMenuProps {
   students: Student[];
+  transactions?: Transaction[];
+  setting?: SchoolSetting;
   onAddStudent: (st: Omit<Student, 'id_siswa'>) => void;
   onUpdateStudent: (st: Student) => void;
   onDeleteStudent: (id: string) => void;
-  onBulkImport: (newStudents: Omit<Student, 'id_siswa'>[]) => void;
+  onBulkImport?: (newStudents: Omit<Student, 'id_siswa'>[]) => void;
+  onImportStudents?: (newStudents: Omit<Student, 'id_siswa'>[]) => void;
   onNavigateToPayment?: (st: Student) => void;
+  onOpenReceipt?: (trx: Transaction) => void;
+  onOpenKartuSpp?: (st: Student) => void;
 }
 
 export const SantriMenu: React.FC<SantriMenuProps> = ({
   students = [],
+  transactions = [],
+  setting = INITIAL_SETTING,
   onAddStudent,
   onUpdateStudent,
   onDeleteStudent,
   onBulkImport,
-  onNavigateToPayment
+  onImportStudents,
+  onNavigateToPayment,
+  onOpenReceipt,
+  onOpenKartuSpp
 }) => {
+  const handleBulk = onImportStudents || onBulkImport;
   const [searchTerm, setSearchTerm] = useState('');
   const [filterKelas, setFilterKelas] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+  const [selectedDetailStudent, setSelectedDetailStudent] = useState<Student | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importText, setImportText] = useState('');
 
@@ -186,7 +200,7 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
       });
 
       if (newItems.length > 0) {
-        onBulkImport(newItems);
+        if (handleBulk) handleBulk(newItems);
         setIsImportModalOpen(false);
         setImportText('');
       } else {
@@ -294,7 +308,14 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
                     <td className="p-3 font-mono text-slate-600">{s.nik}</td>
                     <td className="p-3">
                       <div>
-                        <div className="font-bold text-slate-900 text-[13px]">{s.nama}</div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDetailStudent(s)}
+                          className="font-bold text-slate-900 text-[13px] hover:text-emerald-700 hover:underline text-left cursor-pointer transition-colors"
+                          title="Klik untuk melihat rekap riwayat SPP & edit data murid ini"
+                        >
+                          {s.nama}
+                        </button>
                         <div className="text-[10px] text-slate-400 font-mono">{s.id_siswa}</div>
                       </div>
                     </td>
@@ -675,6 +696,23 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal Detail & Rekap Khusus Murid */}
+      {selectedDetailStudent && (
+        <SantriDetailModal
+          student={selectedDetailStudent}
+          transactions={transactions}
+          setting={setting}
+          onClose={() => setSelectedDetailStudent(null)}
+          onUpdateStudent={(updated) => {
+            onUpdateStudent(updated);
+            setSelectedDetailStudent(updated);
+          }}
+          onNavigateToPayment={onNavigateToPayment}
+          onOpenReceipt={onOpenReceipt}
+          onOpenKartuSpp={onOpenKartuSpp}
+        />
       )}
     </div>
   );

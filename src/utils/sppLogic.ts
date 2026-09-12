@@ -138,16 +138,31 @@ export function matchesMonth(t: Transaction, month: AcademicMonth): boolean {
 /**
  * Calculates student SPP status automatically up to current month and year.
  * Compares due months against existing TRANSAKSI records for the student's NISN.
+ * Respects student or school start obligation month/year (titik awal kewajiban SPP).
  */
 export function calculateStudentSppStatus(
   student: Student,
   transactions: Transaction[],
   settingTahunAjaran?: string,
-  referenceDate: Date = new Date()
+  referenceDate: Date = new Date(),
+  defaultStartMonth?: string,
+  defaultStartYear?: number
 ): StudentSppSummary {
   const startYear = getAcademicStartYear(settingTahunAjaran, referenceDate);
   const academicYear = settingTahunAjaran || `${startYear}/${startYear + 1}`;
   const academicMonths = getAcademicYearMonths(settingTahunAjaran, referenceDate);
+
+  const curCalYear = referenceDate.getFullYear();
+  const curCalMonth = referenceDate.getMonth();
+  const curAbsolute = curCalYear * 12 + curCalMonth;
+
+  // Titik awal kewajiban SPP: prioritas per-murid (murid pindahan), lalu pengaturan semester/sekolah, lalu awal tahun ajaran (Juli)
+  const effectiveStartMonthName = student.spp_mulai_bulan || defaultStartMonth || 'Juli';
+  const effectiveStartYear = student.spp_mulai_tahun || defaultStartYear || startYear;
+
+  const startMonthIdx = INDONESIAN_MONTHS.indexOf(effectiveStartMonthName);
+  const startCalIdx = startMonthIdx >= 0 ? startMonthIdx : 6; // Default to Juli (idx 6)
+  const startAbsolute = effectiveStartYear * 12 + startCalIdx;
 
   // Filter transactions for this student
   const studentTransactions = (transactions || []).filter(
@@ -158,12 +173,17 @@ export function calculateStudentSppStatus(
 
   const allMonths: StudentSppMonthStatus[] = academicMonths.map(m => {
     const matchingTrxs = studentTransactions.filter(t => matchesMonth(t, m));
+    const mAbsolute = m.year * 12 + m.calendarMonthIndex;
+
+    const hasArrived = mAbsolute <= curAbsolute;
+    const isAfterOrAtStart = mAbsolute >= startAbsolute;
+    const isDue = hasArrived && isAfterOrAtStart;
 
     let status: 'LUNAS' | 'KURANG' | 'BELUM_BAYAR' | 'BELUM_JATUH_TEMPO' = 'BELUM_BAYAR';
     let dibayar = 0;
-    let sisa = m.isDue ? monthlyFee : 0;
+    let sisa = isDue ? monthlyFee : 0;
 
-    if (!m.isDue) {
+    if (!isDue) {
       status = 'BELUM_JATUH_TEMPO';
       sisa = 0;
     }
@@ -180,16 +200,20 @@ export function calculateStudentSppStatus(
         sisa = Math.max(0, monthlyFee - dibayar);
       }
     } else {
-      if (m.isDue) {
+      if (isDue) {
         status = 'BELUM_BAYAR';
         sisa = monthlyFee;
+      } else {
+        status = 'BELUM_JATUH_TEMPO';
+        sisa = 0;
       }
     }
 
     return {
       ...m,
+      isDue,
       status,
-      tagihan: m.isDue ? monthlyFee : 0,
+      tagihan: isDue ? monthlyFee : 0,
       dibayar,
       sisa,
       transactions: matchingTrxs
@@ -207,15 +231,6 @@ export function calculateStudentSppStatus(
   const monthsNunggakList = unpaidDueMonths.map(m => m.monthName);
   const monthsNunggakFullLabels = unpaidDueMonths.map(m => m.label);
 
-  const isLunas = unpaidDueMonths.length === 0 && totalTunggakanSpp === 0;
-  let statusLabel = '';
-  if (isLunas) {
-    statusLabel = 'Lunas sampai bulan berjalan';
-  } else {
-    const count = unpaidDueMonths.length;
-    statusLabel = `Menunggak ${count} bulan (${monthsNunggakList.join(', ')})`;
-  }
-
   // Non-SPP transactions for this student
   const nonSppTrxs = studentTransactions.filter(
     t => !academicMonths.some(m => matchesMonth(t, m))
@@ -227,6 +242,20 @@ export function calculateStudentSppStatus(
   const grandTotalTagihan = totalTagihanDue + nonSppTagihan;
   const grandTotalDibayar = totalDibayarDue + nonSppDibayar;
   const grandTotalSisa = totalTunggakanSpp + nonSppSisa;
+
+  // Sinkronisasi mutlak: jika sisa total 0 ATAU tidak ada bulan jatuh tempo yang menunggak, maka LUNAS
+  const isLunas = (unpaidDueMonths.length === 0 || totalTunggakanSpp === 0) && grandTotalSisa === 0;
+  let statusLabel = '';
+  if (isLunas) {
+    statusLabel = 'Lunas sampai bulan berjalan';
+  } else if (unpaidDueMonths.length > 0) {
+    const count = unpaidDueMonths.length;
+    statusLabel = `Menunggak ${count} bulan (${monthsNunggakList.join(', ')})`;
+  } else if (nonSppSisa > 0) {
+    statusLabel = `Tagihan Lain Belum Lunas (Rp ${nonSppSisa.toLocaleString('id-ID')})`;
+  } else {
+    statusLabel = 'Lunas sampai bulan berjalan';
+  }
 
   return {
     student,
@@ -258,12 +287,14 @@ export function calculateAllStudentsSppSummary(
   students: Student[],
   transactions: Transaction[],
   settingTahunAjaran?: string,
-  referenceDate: Date = new Date()
+  referenceDate: Date = new Date(),
+  defaultStartMonth?: string,
+  defaultStartYear?: number
 ) {
   const activeStudents = (students || []).filter(s => s.status_aktif);
 
   const summaries = activeStudents.map(st =>
-    calculateStudentSppStatus(st, transactions, settingTahunAjaran, referenceDate)
+    calculateStudentSppStatus(st, transactions, settingTahunAjaran, referenceDate, defaultStartMonth, defaultStartYear)
   );
 
   const studentsWithTunggakan = summaries.filter(s => s.grandTotalSisa > 0);

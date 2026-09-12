@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Student, Transaction, SchoolSetting } from '../../types';
 import { Search, CreditCard, Printer, CheckCircle, AlertCircle, XCircle, User, Calendar, Award, RotateCcw, FileText, Check, ShieldAlert, Plus, PenTool, MessageCircle, Phone } from 'lucide-react';
+import { createPaymentConfirmationWaUrl, createTunggakanReminderWaUrl } from '../../utils/whatsappHelper';
 
 interface PembayaranMenuProps {
   students: Student[];
@@ -722,18 +723,25 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
                           </button>
                         )}
 
-                        {/* 1-Click WhatsApp reminder button */}
-                        {trx.status !== 'CANCEL' && selectedStudent && (
-                          <a
-                            href={generateWhatsAppReminder(selectedStudent, trx)}
-                            target="_blank"
-                            rel="noreferrer"
-                            title="Kirim pemberitahuan tagihan ini via WhatsApp secara sopan & islami ke Wali"
-                            className="flex items-center gap-1 px-2 py-1 text-[11px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg cursor-pointer transition-all shadow-xs"
+                        {/* Tombol Konfirmasi WA */}
+                        {trx.status !== 'CANCEL' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const st = selectedStudent || students.find(s => s.nisn === trx.nisn);
+                              if (!st || !st.no_hp || st.no_hp.trim() === '') {
+                                alert(`Nomor WhatsApp wali untuk ananda ${trx.nama_siswa || 'murid ini'} belum terisi di sistem. Silakan lengkapi nomor HP wali di menu Data Murid terlebih dahulu.`);
+                                return;
+                              }
+                              const waUrl = createPaymentConfirmationWaUrl(setting, st, trx);
+                              window.open(waUrl, '_blank');
+                            }}
+                            title="Kirim Konfirmasi Pembayaran via WhatsApp ke Wali Murid"
+                            className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg cursor-pointer transition-all shadow-xs"
                           >
                             <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>WA</span>
-                          </a>
+                            <span>Konfirmasi WA</span>
+                          </button>
                         )}
 
                         {/* Kuitansi */}

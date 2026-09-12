@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { SchoolSetting, Transaction, KeuanganRecord, Student } from '../types';
 import { calculateStudentSppStatus, calculateAllStudentsSppSummary } from '../utils/sppLogic';
+import { createTunggakanReminderWaUrl } from '../utils/whatsappHelper';
 import { Printer, X, Download, FileText, CheckCircle2 } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
 
@@ -224,9 +225,20 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                 <table className="w-full">
                   <tbody>
                     <tr>
-                      <td className="py-1 text-slate-500 w-32">Tanggal Bayar</td>
-                      <td className="py-1 font-medium">: {transaction.tanggal}</td>
+                      <td className="py-1 text-slate-500 w-32">Tanggal Transaksi</td>
+                      <td className="py-1 font-bold text-slate-900">: {transaction.tanggal} {transaction.waktu ? `(${transaction.waktu} WIB)` : ''}</td>
                     </tr>
+                    {transaction.bulan ? (
+                      <tr className="bg-emerald-50/70">
+                        <td className="py-1 text-emerald-900 font-bold w-32">Bulan Dibayar</td>
+                        <td className="py-1 font-extrabold text-emerald-900">: {transaction.bulan}</td>
+                      </tr>
+                    ) : (
+                      <tr>
+                        <td className="py-1 text-slate-500 w-32">Periode / Bulan</td>
+                        <td className="py-1 text-slate-600">: Sesuai Jenis Tagihan</td>
+                      </tr>
+                    )}
                     <tr>
                       <td className="py-1 text-slate-500">Tahun Ajaran</td>
                       <td className="py-1">: {setting.tahun_ajaran}</td>
@@ -245,7 +257,7 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                     </tr>
                     <tr>
                       <td className="py-1 text-slate-500">Petugas Penerima</td>
-                      <td className="py-1 font-medium">: {transaction.petugas}</td>
+                      <td className="py-1 font-medium">: {transaction.petugas || 'Petugas Keuangan'}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -401,7 +413,20 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                           <td className="border border-slate-300 p-2">{st.kelas}</td>
                           <td className="border border-slate-300 p-2">
                             <div>{st.nama_wali || '-'}</div>
-                            <div className="text-emerald-700 text-[10px]">{st.no_hp || '-'}</div>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="text-emerald-700 text-[10px]">{st.no_hp || '-'}</span>
+                              {st.no_hp && (
+                                <a
+                                  href={createTunggakanReminderWaUrl(setting, st, item)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title="Kirim Pengingat Tunggakan WA ke Wali"
+                                  className="print:hidden px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 cursor-pointer"
+                                >
+                                  Kirim WA
+                                </a>
+                              )}
+                            </div>
                           </td>
                           <td className="border border-slate-300 p-2 font-medium text-slate-800">{uraian}</td>
                           <td className="border border-slate-300 p-2 text-right">{formatRupiah(item.grandTotalTagihan)}</td>

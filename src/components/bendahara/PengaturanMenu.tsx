@@ -3,7 +3,8 @@ import { SchoolSetting, Announcement } from '../../types';
 import { GOOGLE_APPS_SCRIPT_CODE } from '../../services/gasBackendCode';
 import { StorageService } from '../../services/storageService';
 import { APP_CONFIG } from '../../config';
-import { Settings, Image, Upload, Link, Check, Copy, ExternalLink, RefreshCw, ShieldCheck, HelpCircle, FileCode, CheckCircle2, AlertCircle, QrCode, CreditCard, BookOpen, Bell, Megaphone, Trash2, PlusCircle, Info, Wrench } from 'lucide-react';
+import { Settings, Image, Upload, Link, Check, Copy, ExternalLink, RefreshCw, ShieldCheck, HelpCircle, FileCode, CheckCircle2, AlertCircle, QrCode, CreditCard, BookOpen, Bell, Megaphone, Trash2, PlusCircle, Info, Wrench, Calendar } from 'lucide-react';
+import { INDONESIAN_MONTHS } from '../../utils/sppLogic';
 
 interface PengaturanMenuProps {
   setting: SchoolSetting;
@@ -313,7 +314,7 @@ export const PengaturanMenu: React.FC<PengaturanMenuProps> = ({
 
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                Nama Bendahara (Petugas Keuangan)
+                Nama Bendahara (Tanda Tangan Resmi Kuitansi & Laporan)
               </label>
               <input
                 type="text"
@@ -322,6 +323,49 @@ export const PengaturanMenu: React.FC<PengaturanMenuProps> = ({
                 onChange={(e) => setFormData({ ...formData, nama_bendahara: e.target.value })}
                 className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white font-medium"
               />
+              <p className="text-[11px] text-slate-500 mt-1">Nama resmi yang tercetak di kolom tanda tangan kuitansi & laporan keuangan.</p>
+            </div>
+          </div>
+
+          {/* Pengaturan Titik Awal Kewajiban SPP Per Semester */}
+          <div className="pt-3 border-t border-slate-200">
+            <div className="flex items-center gap-2 mb-2">
+              <Calendar className="w-4 h-4 text-emerald-700" />
+              <h4 className="text-xs font-bold text-slate-900 uppercase">Titik Awal Perhitungan Kewajiban SPP (Semester Aktif)</h4>
+            </div>
+            <p className="text-xs text-slate-500 mb-3">
+              Menentukan bulan dan tahun awal dimulainya kewajiban pembayaran SPP. Bulan-bulan sebelum titik awal ini tidak akan dihitung sebagai tunggakan.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Bulan Mulai Kewajiban SPP
+                </label>
+                <select
+                  value={formData.spp_mulai_bulan || 'Juli'}
+                  onChange={(e) => setFormData({ ...formData, spp_mulai_bulan: e.target.value })}
+                  className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white font-semibold text-slate-800"
+                >
+                  {INDONESIAN_MONTHS.map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+                <span className="text-[10px] text-slate-400">Standar semester gasal dimulai bulan Juli.</span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Tahun Mulai Kewajiban SPP
+                </label>
+                <input
+                  type="number"
+                  value={formData.spp_mulai_tahun || 2026}
+                  onChange={(e) => setFormData({ ...formData, spp_mulai_tahun: Number(e.target.value) })}
+                  className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white font-mono font-semibold"
+                />
+                <span className="text-[10px] text-slate-400">Tahun kalender awal semester (misal 2026).</span>
+              </div>
             </div>
           </div>
 

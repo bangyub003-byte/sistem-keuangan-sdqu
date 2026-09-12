@@ -30,6 +30,8 @@ export interface Student {
   spp_nominal: number; // custom SPP nominal (default or custom)
   spp_kategori?: 'REGULER' | 'BEASISWA' | 'EKONOMI' | 'YATIM' | 'KHUSUS';
   spp_catatan?: string;
+  spp_mulai_bulan?: string; // custom start month e.g. "September" (for transfer students)
+  spp_mulai_tahun?: number; // custom start year e.g. 2026
 }
 
 export type TransactionStatus = 'LUNAS' | 'KURANG' | 'CANCEL';
@@ -37,6 +39,7 @@ export type TransactionStatus = 'LUNAS' | 'KURANG' | 'CANCEL';
 export interface Transaction {
   id_transaksi: string;
   tanggal: string; // ISO or YYYY-MM-DD
+  waktu?: string; // Real-time timestamp HH:mm:ss
   nisn: string;
   nama_siswa?: string;
   kelas?: string;
@@ -86,6 +89,8 @@ export interface SchoolSetting {
   nama_kepsek: string;
   nama_bendahara: string;
   spp_default_nominal: number;
+  spp_mulai_bulan?: string; // e.g. "Juli"
+  spp_mulai_tahun?: number; // e.g. 2026
   gas_url?: string;
   drive_folder_id?: string;
   spreadsheet_id?: string;

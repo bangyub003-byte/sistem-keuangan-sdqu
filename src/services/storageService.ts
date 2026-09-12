@@ -460,11 +460,13 @@ export class StorageService {
     const now = new Date();
     const pad = (n: number) => n.toString().padStart(2, '0');
     const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
     
     const sisa = Math.max(0, data.nominal_tagihan - data.nominal_bayar);
     const newTrx: Transaction = {
       id_transaksi: `TRX-${now.getFullYear()}-${Date.now().toString().slice(-6)}`,
       tanggal: dateStr,
+      waktu: timeStr,
       nisn: data.nisn,
       nama_siswa: data.nama_siswa,
       kelas: data.kelas,

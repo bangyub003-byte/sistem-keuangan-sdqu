@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Student, Transaction, SchoolSetting, UserAccount, Announcement } from '../../types';
 import { PrintMode } from '../PrintReportView';
 import { calculateStudentSppStatus } from '../../utils/sppLogic';
+import { createPaymentConfirmationWaUrl } from '../../utils/whatsappHelper';
 import {
   GraduationCap,
   Heart,
@@ -20,7 +21,8 @@ import {
   Maximize2,
   X,
   Megaphone,
-  Info
+  Info,
+  MessageCircle
 } from 'lucide-react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 
@@ -446,13 +448,33 @@ export const WaliDashboard: React.FC<WaliDashboardProps> = ({
                         )}
                       </td>
                       <td className="p-3 text-center">
-                        <button
-                          onClick={() => onOpenReceipt(trx)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg cursor-pointer"
-                        >
-                          <Printer className="w-3.5 h-3.5" />
-                          <span>Kuitansi</span>
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => onOpenReceipt(trx)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg cursor-pointer"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>Kuitansi</span>
+                          </button>
+                          {trx.status !== 'CANCEL' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!student.no_hp || student.no_hp.trim() === '') {
+                                  alert('Nomor WhatsApp wali belum tercatat di data murid. Silakan hubungi bendahara sekolah.');
+                                  return;
+                                }
+                                const waUrl = createPaymentConfirmationWaUrl(setting, student, trx);
+                                window.open(waUrl, '_blank');
+                              }}
+                              title="Kirim Konfirmasi WA"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg cursor-pointer"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>WA</span>
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))

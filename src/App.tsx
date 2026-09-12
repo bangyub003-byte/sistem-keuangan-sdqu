@@ -579,12 +579,14 @@ export default function App() {
                 {activeBendaharaTab === 'SANTRI' && (
                   <SantriMenu
                     students={students}
+                    transactions={transactions}
                     setting={setting}
                     onAddStudent={handleAddStudent}
                     onUpdateStudent={handleUpdateStudent}
                     onDeleteStudent={handleDeleteStudent}
                     onImportStudents={handleImportStudents}
                     onOpenKartuSpp={handleOpenKartuSpp}
+                    onOpenReceipt={handleOpenReceipt}
                     onNavigateToPayment={(st) => {
                       setSelectedStudentForPayment(st);
                       setActiveBendaharaTab('PEMBAYARAN');

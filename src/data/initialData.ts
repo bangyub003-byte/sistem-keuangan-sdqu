@@ -11,6 +11,8 @@ export const INITIAL_SETTING: SchoolSetting = {
   nama_kepsek: "Ust. H. Ahmad Mufid, M.Pd.",
   nama_bendahara: "Usth. Nur Khasanah, S.E.I.",
   spp_default_nominal: 500000,
+  spp_mulai_bulan: "Juli",
+  spp_mulai_tahun: 2026,
   gas_url: APP_CONFIG.DEFAULT_GAS_URL,
   drive_folder_id: APP_CONFIG.DEFAULT_DRIVE_FOLDER_ID,
   spreadsheet_id: APP_CONFIG.DEFAULT_SPREADSHEET_ID,
@@ -189,6 +191,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
   {
     id_transaksi: "TRX-2026-000A",
     tanggal: "2026-07-08",
+    waktu: "08:15:30",
     nisn: "0015678901",
     nama_siswa: "Muhammad Fatih Al-Farisi",
     kelas: "4A - Ali bin Abi Thalib",
@@ -205,6 +208,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
   {
     id_transaksi: "TRX-2026-000B",
     tanggal: "2026-08-06",
+    waktu: "09:30:15",
     nisn: "0015678901",
     nama_siswa: "Muhammad Fatih Al-Farisi",
     kelas: "4A - Ali bin Abi Thalib",
@@ -221,6 +225,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
   {
     id_transaksi: "TRX-2026-000C",
     tanggal: "2026-07-10",
+    waktu: "10:11:42",
     nisn: "0015678903",
     nama_siswa: "Zaid Abdurrahman",
     kelas: "2A - Umar bin Khattab",
@@ -237,6 +242,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
   {
     id_transaksi: "TRX-2026-000D",
     tanggal: "2026-07-05",
+    waktu: "08:45:10",
     nisn: "0015678902",
     nama_siswa: "Aisyah Humaira Putri",
     kelas: "3B - Khadijah",
@@ -253,6 +259,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
   {
     id_transaksi: "TRX-2026-000E",
     tanggal: "2026-08-05",
+    waktu: "11:20:05",
     nisn: "0015678902",
     nama_siswa: "Aisyah Humaira Putri",
     kelas: "3B - Khadijah",
@@ -269,6 +276,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
   {
     id_transaksi: "TRX-2026-000F",
     tanggal: "2026-07-07",
+    waktu: "09:05:33",
     nisn: "0015678904",
     nama_siswa: "Fathimah Az-Zahra",
     kelas: "1A - Abu Bakar Ash-Shiddiq",
@@ -285,6 +293,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
   {
     id_transaksi: "TRX-2026-000G",
     tanggal: "2026-08-04",
+    waktu: "13:14:22",
     nisn: "0015678904",
     nama_siswa: "Fathimah Az-Zahra",
     kelas: "1A - Abu Bakar Ash-Shiddiq",
@@ -301,6 +310,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
   {
     id_transaksi: "TRX-2026-000H",
     tanggal: "2026-07-12",
+    waktu: "14:02:18",
     nisn: "0015678905",
     nama_siswa: "Ibrahim Al-Ghifari",
     kelas: "5A - Khalid bin Walid",
@@ -317,6 +327,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
   {
     id_transaksi: "TRX-2026-001",
     tanggal: "2026-09-02",
+    waktu: "08:30:00",
     nisn: "0015678901",
     nama_siswa: "Muhammad Fatih Al-Farisi",
     kelas: "4A - Ali bin Abi Thalib",
@@ -333,6 +344,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
   {
     id_transaksi: "TRX-2026-002",
     tanggal: "2026-09-03",
+    waktu: "10:15:45",
     nisn: "0015678902",
     nama_siswa: "Aisyah Humaira Putri",
     kelas: "3B - Khadijah",
@@ -349,6 +361,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
   {
     id_transaksi: "TRX-2026-003",
     tanggal: "2026-09-05",
+    waktu: "09:45:12",
     nisn: "0015678903",
     nama_siswa: "Zaid Abdurrahman",
     kelas: "2A - Umar bin Khattab",
@@ -365,6 +378,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
   {
     id_transaksi: "TRX-2026-004",
     tanggal: "2026-08-28",
+    waktu: "11:00:20",
     nisn: "0015678905",
     nama_siswa: "Ibrahim Al-Ghifari",
     kelas: "5A - Khalid bin Walid",
@@ -380,6 +394,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
   {
     id_transaksi: "TRX-2026-005",
     tanggal: "2026-09-01",
+    waktu: "08:10:55",
     nisn: "0015678904",
     nama_siswa: "Fathimah Az-Zahra",
     kelas: "1A - Abu Bakar Ash-Shiddiq",
@@ -396,6 +411,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
   {
     id_transaksi: "TRX-2026-006",
     tanggal: "2026-08-30",
+    waktu: "15:30:10",
     nisn: "0015678903",
     nama_siswa: "Zaid Abdurrahman",
     kelas: "2A - Umar bin Khattab",
