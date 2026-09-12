@@ -1,4 +1,4 @@
-import { Student, Transaction, KeuanganRecord, SchoolSetting, UserAccount, ActivityLog, Announcement, KategoriDana } from '../types';
+import { Student, Transaction, KeuanganRecord, KeuanganType, KeuanganStatus, SchoolSetting, UserAccount, ActivityLog, Announcement, KategoriDana } from '../types';
 import { INITIAL_SETTING, INITIAL_USERS, INITIAL_STUDENTS, INITIAL_TRANSACTIONS, INITIAL_KEUANGAN, INITIAL_LOGS, INITIAL_ANNOUNCEMENTS, INITIAL_KATEGORI_DANA } from '../data/initialData';
 import { APP_CONFIG } from '../config';
 
@@ -307,10 +307,24 @@ export class StorageService {
     userAccount: UserAccount;
     gasResult?: any;
   }> {
+    const setting = this.getSetting();
+    const defaultSpp = setting?.spp_default_nominal || 85000;
+    const cleanNisn = (studentData.nisn || '').trim();
+    const cleanNik = (studentData.nik || '').trim();
+    // Fallback otomatis username login wali ke NIK jika NISN kosong
+    const loginIdentifier = cleanNisn || cleanNik;
+
+    const nominal = (studentData.spp_nominal && Number(studentData.spp_nominal) > 0)
+      ? Number(studentData.spp_nominal)
+      : defaultSpp;
+
     const students = this.getStudents();
     const newId = `SISWA-${Date.now()}`;
     const newStudent: Student = {
       ...studentData,
+      nisn: cleanNisn,
+      nik: cleanNik,
+      spp_nominal: nominal,
       id_siswa: newId,
       foto: formatDriveUrl(studentData.foto)
     };
@@ -318,23 +332,31 @@ export class StorageService {
     const updatedStudents = [newStudent, ...students];
     this.saveStudents(updatedStudents);
 
-    // Akun Wali
+    // Akun Wali: username & password default menggunakan NISN, jika kosong otomatis menggunakan NIK
     const users = this.getUsers();
     const newWaliUser: UserAccount = {
-      id_user: `USR-${studentData.nisn}`,
-      username: studentData.nisn,
-      password: studentData.nisn,
-      nama: `${studentData.nama_wali} (Wali ${studentData.nama})`,
+      id_user: `USR-${loginIdentifier}`,
+      username: loginIdentifier,
+      password: loginIdentifier,
+      nama: `${studentData.nama_wali || 'Wali'} (Wali ${studentData.nama})`,
       role: 'WALI',
       id_siswa: newId,
-      nisn: studentData.nisn
+      nisn: cleanNisn,
+      nik: cleanNik
     };
-    const updatedUsers = [...users.filter(u => u.username !== studentData.nisn), newWaliUser];
+    const updatedUsers = [
+      ...users.filter(u =>
+        u.username !== loginIdentifier &&
+        u.id_siswa !== newId &&
+        (!cleanNisn || u.username !== cleanNisn) &&
+        (!cleanNik || u.username !== cleanNik)
+      ),
+      newWaliUser
+    ];
     this.saveUsers(updatedUsers);
 
-    this.addLog(operator, `Menambahkan murid baru: ${studentData.nama} (NISN: ${studentData.nisn}) Kelas ${studentData.kelas}`);
+    this.addLog(operator, `Menambahkan murid baru: ${studentData.nama} (${cleanNisn ? `NISN: ${cleanNisn}` : `NIK: ${cleanNik}`}) Kelas ${studentData.kelas}`);
 
-    const setting = this.getSetting();
     let gasResult: any = null;
     if (setting.gas_url) {
       gasResult = await this.callGasApi(setting.gas_url, 'ADD_STUDENT', { ...newStudent, petugas: operator });
@@ -375,11 +397,15 @@ export class StorageService {
     const updated = students.filter(s => s.id_siswa !== studentId);
     this.saveStudents(updated);
 
-    // Hapus juga user wali terkait
-    const users = this.getUsers().filter(u => u.username !== target.nisn && u.id_siswa !== studentId);
+    // Hapus juga user wali terkait (cek id_siswa, nisn, dan nik)
+    const users = this.getUsers().filter(u =>
+      u.id_siswa !== studentId &&
+      (!target.nisn || u.username !== target.nisn) &&
+      (!target.nik || u.username !== target.nik)
+    );
     this.saveUsers(users);
 
-    this.addLog(operator, `Menghapus data murid: ${target.nama} (NISN: ${target.nisn})`);
+    this.addLog(operator, `Menghapus data murid: ${target.nama} (${target.nisn ? `NISN: ${target.nisn}` : `NIK: ${target.nik}`})`);
 
     const setting = this.getSetting();
     let gasResult: any = null;
@@ -399,28 +425,52 @@ export class StorageService {
     const added: Student[] = [];
     const newUsers: UserAccount[] = [];
 
-    const existingNisns = new Set(students.map(s => s.nisn));
+    const existingIdentifiers = new Set<string>();
+    students.forEach(s => {
+      if (s.nisn && s.nisn.trim()) existingIdentifiers.add(s.nisn.trim().toLowerCase());
+      if (s.nik && s.nik.trim()) existingIdentifiers.add(s.nik.trim().toLowerCase());
+    });
+    users.forEach(u => {
+      if (u.username) existingIdentifiers.add(u.username.trim().toLowerCase());
+    });
+
+    const setting = this.getSetting();
+    const defaultSpp = setting?.spp_default_nominal || 85000;
 
     newStudents.forEach((st, idx) => {
-      if (existingNisns.has(st.nisn)) return;
-      existingNisns.add(st.nisn);
+      const cleanNisn = (st.nisn || '').trim();
+      const cleanNik = (st.nik || '').trim();
+      const loginIdentifier = cleanNisn || cleanNik;
+      if (!loginIdentifier) return; // lewati jika tidak ada NISN maupun NIK
+
+      const idLower = loginIdentifier.toLowerCase();
+      if (existingIdentifiers.has(idLower)) return;
+      existingIdentifiers.add(idLower);
 
       const newId = `SISWA-${Date.now()}-${idx}`;
+      const nominal = (st.spp_nominal && Number(st.spp_nominal) > 0)
+        ? Number(st.spp_nominal)
+        : defaultSpp;
+
       const studentObj: Student = {
         ...st,
+        nisn: cleanNisn,
+        nik: cleanNik,
+        spp_nominal: nominal,
         id_siswa: newId,
         foto: formatDriveUrl(st.foto)
       };
       added.push(studentObj);
 
       newUsers.push({
-        id_user: `USR-${st.nisn}`,
-        username: st.nisn,
-        password: st.nisn,
-        nama: `${st.nama_wali} (Wali ${st.nama})`,
+        id_user: `USR-${loginIdentifier}`,
+        username: loginIdentifier,
+        password: loginIdentifier,
+        nama: `${st.nama_wali || 'Wali'} (Wali ${st.nama || 'Murid'})`,
         role: 'WALI',
         id_siswa: newId,
-        nisn: st.nisn
+        nisn: cleanNisn,
+        nik: cleanNik
       });
     });
 
@@ -430,13 +480,11 @@ export class StorageService {
       this.addLog(operator, `Import massal ${added.length} murid baru`);
     }
 
-    const setting = this.getSetting();
-    let gasResult: any = null;
     if (setting.gas_url && added.length > 0) {
-      gasResult = await this.callGasApi(setting.gas_url, 'BULK_IMPORT_STUDENTS', { students: added, petugas: operator });
+      this.callGasApi(setting.gas_url, 'BULK_IMPORT_STUDENTS', { students: added, petugas: operator });
     }
 
-    return { added, gasResult };
+    return { added };
   }
 
   static async processPayment(data: {
@@ -489,6 +537,7 @@ export class StorageService {
     const newKeuangan: KeuanganRecord = {
       id_keuangan: `KUG-${Date.now()}`,
       tanggal: dateStr,
+      waktu: timeStr,
       jenis: 'MASUK',
       kategori: data.kategori || 'SPP',
       nominal: data.nominal_bayar,
@@ -590,9 +639,14 @@ export class StorageService {
     gasResult?: any;
   }> {
     const keuangan = this.getKeuangan();
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+
     const newRec: KeuanganRecord = {
       ...record,
       id_keuangan: `KUG-${Date.now()}`,
+      waktu: record.waktu || timeStr,
       petugas: operator || record.petugas || 'Bendahara',
       status: record.status || 'ACTIVE',
       id_kategori: record.id_kategori || '',
@@ -862,92 +916,7 @@ export class StorageService {
         this.setDataVersion(remoteVersion);
       }
 
-      // Parse Siswa
-      const parsedStudents: Student[] = Array.isArray(data.students) ? data.students.filter((s: any) => s.nisn || s.nama).map((s: any) => ({
-        id_siswa: String(s.id_siswa || `S-${s.nisn || Date.now()}`),
-        nisn: String(s.nisn || ''),
-        nik: String(s.nik || ''),
-        nama: String(s.nama || ''),
-        tempat_lahir: String(s.tempat_lahir || ''),
-        tanggal_lahir: String(s.tanggal_lahir || ''),
-        jenis_kelamin: (s.jenis_kelamin === 'P' || s.jenis_kelamin === 'Perempuan') ? 'P' : 'L',
-        kelas: String(s.kelas || '1-A'),
-        nama_wali: String(s.nama_wali || ''),
-        no_hp: String(s.no_hp || ''),
-        alamat: String(s.alamat || ''),
-        foto: formatDriveUrl(s.foto),
-        status_aktif: s.status_aktif !== false && s.status_aktif !== 'false' && s.status_aktif !== 0,
-        spp_nominal: Number(s.spp_nominal) || 500000,
-        spp_kategori: String(s.spp_kategori || 'REGULER'),
-        spp_catatan: String(s.spp_catatan || '')
-      })) : [];
-
-      // Parse Transaksi
-      const parsedTransactions: Transaction[] = Array.isArray(data.transactions) ? data.transactions.filter((t: any) => t.id_transaksi || t.nisn).map((t: any) => ({
-        id_transaksi: String(t.id_transaksi || `TRX-${Date.now()}`),
-        tanggal: String(t.tanggal || new Date().toISOString().slice(0, 10)),
-        waktu: t.waktu ? String(t.waktu) : (t.jam ? String(t.jam) : undefined),
-        nisn: String(t.nisn || ''),
-        nama_siswa: String(t.nama_siswa || parsedStudents.find(s => s.nisn === String(t.nisn))?.nama || ''),
-        kelas: String(t.kelas || parsedStudents.find(s => s.nisn === String(t.nisn))?.kelas || ''),
-        jenis: String(t.jenis || 'SPP'),
-        kategori: String(t.kategori || 'SPP'),
-        bulan: t.bulan ? String(t.bulan) : undefined,
-        nominal_tagihan: Number(t.nominal_tagihan) || 0,
-        nominal_bayar: Number(t.nominal_bayar) || 0,
-        sisa: Number(t.sisa) || 0,
-        status: (t.status === 'LUNAS' || t.status === 'KURANG' || t.status === 'CANCEL') ? t.status : 'LUNAS',
-        petugas: String(t.petugas || 'Bendahara'),
-        keterangan: t.keterangan ? String(t.keterangan) : undefined,
-        alasan_batal: t.alasan_batal ? String(t.alasan_batal) : undefined
-      })) : [];
-
-      // Parse Keuangan Kas
-      const parsedKeuangan: KeuanganRecord[] = Array.isArray(data.keuangan) ? data.keuangan.filter((k: any) => k.nominal || k.keterangan).map((k: any) => ({
-        id_keuangan: String(k.id_keuangan || `KAS-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`),
-        tanggal: String(k.tanggal || new Date().toISOString().slice(0, 10)),
-        jenis: k.jenis === 'KELUAR' ? 'KELUAR' : 'MASUK',
-        kategori: String(k.kategori || 'Operasional'),
-        nominal: Number(k.nominal) || 0,
-        keterangan: String(k.keterangan || ''),
-        bukti: formatDriveUrl(k.bukti),
-        petugas: String(k.petugas || 'Bendahara'),
-        status: (k.status === 'CANCEL') ? 'CANCEL' : 'ACTIVE',
-        alasan_batal: k.alasan_batal ? String(k.alasan_batal) : undefined,
-        id_kategori: k.id_kategori ? String(k.id_kategori) : undefined
-      })) : [];
-
-      // Parse Kategori Dana
-      const parsedKategoriDana: KategoriDana[] = Array.isArray(data.kategori_dana) ? data.kategori_dana.filter((kd: any) => kd.nama_kategori).map((kd: any) => ({
-        id_kategori: String(kd.id_kategori || `KAT-${Date.now()}`),
-        nama_kategori: String(kd.nama_kategori),
-        keterangan: String(kd.keterangan || ''),
-        status_aktif: kd.status_aktif !== false && kd.status_aktif !== 'false' && kd.status_aktif !== 0
-      })) : [];
-
-      // Parse Users
-      const parsedUsers: UserAccount[] = Array.isArray(data.users) ? data.users.filter((u: any) => u.username).map((u: any) => ({
-        id_user: String(u.id_user || `USR-${u.username}`),
-        username: String(u.username),
-        password: String(u.password || u.username),
-        nama: String(u.nama || u.username),
-        role: (u.role === 'BENDAHARA' || u.role === 'KEPSEK' || u.role === 'WALI') ? u.role : 'WALI',
-        id_siswa: u.id_siswa ? String(u.id_siswa) : undefined,
-        nisn: u.nisn ? String(u.nisn) : undefined
-      })) : [];
-
-      // Parse Pengumuman
-      const parsedAnnouncements: Announcement[] = Array.isArray(data.announcements) ? data.announcements.filter((a: any) => a.judul || a.isi).map((a: any) => ({
-        id_pengumuman: String(a.id_pengumuman || `ANN-${Date.now()}`),
-        tanggal: String(a.tanggal || new Date().toISOString().slice(0, 10)),
-        judul: String(a.judul || ''),
-        isi: String(a.isi || ''),
-        penulis: String(a.penulis || 'Bendahara'),
-        is_penting: a.is_penting === true || a.is_penting === 'true' || a.is_penting === 1,
-        status_aktif: a.status_aktif !== false && a.status_aktif !== 'false' && a.status_aktif !== 0
-      })) : [];
-
-      // Parse Setting (Profil Sekolah, Kepala Sekolah, Rekening)
+      // Parse Setting (Profil Sekolah, Kepala Sekolah, Rekening, SPP Default) terlebih dahulu
       let parsedSetting: SchoolSetting | undefined = undefined;
       const rawSetting = data.settings || data.setting || data.pengaturan;
       if (rawSetting && typeof rawSetting === 'object') {
@@ -970,6 +939,121 @@ export class StorageService {
         };
         localStorage.setItem(STORAGE_KEYS.SETTING, JSON.stringify(parsedSetting));
       }
+
+      const activeDefaultSpp = parsedSetting?.spp_default_nominal || this.getSetting()?.spp_default_nominal || 85000;
+
+      // Parse Siswa
+      const parsedStudents: Student[] = Array.isArray(data.students) ? data.students.filter((s: any) => s.nisn || s.nik || s.nama).map((s: any) => ({
+        id_siswa: String(s.id_siswa || `S-${s.nisn || s.nik || Date.now()}`),
+        nisn: String(s.nisn || ''),
+        nik: String(s.nik || ''),
+        nama: String(s.nama || ''),
+        tempat_lahir: String(s.tempat_lahir || ''),
+        tanggal_lahir: String(s.tanggal_lahir || ''),
+        jenis_kelamin: (s.jenis_kelamin === 'P' || s.jenis_kelamin === 'Perempuan') ? 'P' : 'L',
+        kelas: String(s.kelas || '1A'),
+        nama_wali: String(s.nama_wali || ''),
+        no_hp: String(s.no_hp || ''),
+        alamat: String(s.alamat || ''),
+        foto: formatDriveUrl(s.foto),
+        status_aktif: s.status_aktif !== false && s.status_aktif !== 'false' && s.status_aktif !== 0,
+        spp_nominal: (Number(s.spp_nominal) && Number(s.spp_nominal) > 0) ? Number(s.spp_nominal) : activeDefaultSpp,
+        spp_kategori: String(s.spp_kategori || 'REGULER'),
+        spp_catatan: String(s.spp_catatan || '')
+      })) : [];
+
+      // Parse Transaksi
+      const parsedTransactions: Transaction[] = Array.isArray(data.transactions) ? data.transactions.filter((t: any) => t.id_transaksi || t.nisn).map((t: any) => {
+        const rawDate = String(t.tanggal || new Date().toISOString().slice(0, 10));
+        let dateVal = rawDate;
+        let timeVal = t.waktu ? String(t.waktu) : (t.jam ? String(t.jam) : undefined);
+        if (dateVal.includes(' ') || dateVal.includes('T')) {
+          const sep = dateVal.includes('T') ? 'T' : ' ';
+          const parts = dateVal.split(sep);
+          dateVal = parts[0];
+          if (!timeVal && parts[1]) {
+            timeVal = parts[1].replace('Z', '').split('.')[0];
+          }
+        }
+        return {
+          id_transaksi: String(t.id_transaksi || `TRX-${Date.now()}`),
+          tanggal: dateVal,
+          waktu: timeVal,
+          nisn: String(t.nisn || ''),
+          nama_siswa: String(t.nama_siswa || parsedStudents.find(s => s.nisn === String(t.nisn))?.nama || ''),
+          kelas: String(t.kelas || parsedStudents.find(s => s.nisn === String(t.nisn))?.kelas || ''),
+          jenis: String(t.jenis || 'SPP'),
+          kategori: String(t.kategori || 'SPP'),
+          bulan: t.bulan ? String(t.bulan) : undefined,
+          nominal_tagihan: Number(t.nominal_tagihan) || 0,
+          nominal_bayar: Number(t.nominal_bayar) || 0,
+          sisa: Number(t.sisa) || 0,
+          status: (t.status === 'LUNAS' || t.status === 'KURANG' || t.status === 'CANCEL') ? t.status : 'LUNAS',
+          petugas: String(t.petugas || 'Bendahara'),
+          keterangan: t.keterangan ? String(t.keterangan) : undefined,
+          alasan_batal: t.alasan_batal ? String(t.alasan_batal) : undefined
+        };
+      }) : [];
+
+      // Parse Keuangan Kas
+      const parsedKeuangan: KeuanganRecord[] = Array.isArray(data.keuangan) ? data.keuangan.filter((k: any) => k.nominal || k.keterangan).map((k: any) => {
+        const rawDate = String(k.tanggal || new Date().toISOString().slice(0, 10));
+        let dateVal = rawDate;
+        let timeVal = k.waktu ? String(k.waktu) : (k.jam ? String(k.jam) : undefined);
+        if (dateVal.includes(' ') || dateVal.includes('T')) {
+          const sep = dateVal.includes('T') ? 'T' : ' ';
+          const parts = dateVal.split(sep);
+          dateVal = parts[0];
+          if (!timeVal && parts[1]) {
+            timeVal = parts[1].replace('Z', '').split('.')[0];
+          }
+        }
+        return {
+          id_keuangan: String(k.id_keuangan || `KAS-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`),
+          tanggal: dateVal,
+          waktu: timeVal,
+          jenis: (k.jenis === 'KELUAR' ? 'KELUAR' : 'MASUK') as KeuanganType,
+          kategori: String(k.kategori || 'Operasional'),
+          nominal: Number(k.nominal) || 0,
+          keterangan: String(k.keterangan || ''),
+          bukti: formatDriveUrl(k.bukti),
+          petugas: String(k.petugas || 'Bendahara'),
+          status: ((k.status === 'CANCEL') ? 'CANCEL' : 'ACTIVE') as KeuanganStatus,
+          alasan_batal: k.alasan_batal ? String(k.alasan_batal) : undefined,
+          id_kategori: k.id_kategori ? String(k.id_kategori) : undefined
+        };
+      }) : [];
+
+      // Parse Kategori Dana
+      const parsedKategoriDana: KategoriDana[] = Array.isArray(data.kategori_dana) ? data.kategori_dana.filter((kd: any) => kd.nama_kategori).map((kd: any) => ({
+        id_kategori: String(kd.id_kategori || `KAT-${Date.now()}`),
+        nama_kategori: String(kd.nama_kategori),
+        keterangan: String(kd.keterangan || ''),
+        status_aktif: kd.status_aktif !== false && kd.status_aktif !== 'false' && kd.status_aktif !== 0
+      })) : [];
+
+      // Parse Users
+      const parsedUsers: UserAccount[] = Array.isArray(data.users) ? data.users.filter((u: any) => u.username).map((u: any) => ({
+        id_user: String(u.id_user || `USR-${u.username}`),
+        username: String(u.username),
+        password: String(u.password || u.username),
+        nama: String(u.nama || u.username),
+        role: (u.role === 'BENDAHARA' || u.role === 'KEPSEK' || u.role === 'WALI') ? u.role : 'WALI',
+        id_siswa: u.id_siswa ? String(u.id_siswa) : undefined,
+        nisn: u.nisn ? String(u.nisn) : undefined,
+        nik: u.nik ? String(u.nik) : undefined
+      })) : [];
+
+      // Parse Pengumuman
+      const parsedAnnouncements: Announcement[] = Array.isArray(data.announcements) ? data.announcements.filter((a: any) => a.judul || a.isi).map((a: any) => ({
+        id_pengumuman: String(a.id_pengumuman || `ANN-${Date.now()}`),
+        tanggal: String(a.tanggal || new Date().toISOString().slice(0, 10)),
+        judul: String(a.judul || ''),
+        isi: String(a.isi || ''),
+        penulis: String(a.penulis || 'Bendahara'),
+        is_penting: a.is_penting === true || a.is_penting === 'true' || a.is_penting === 1,
+        status_aktif: a.status_aktif !== false && a.status_aktif !== 'false' && a.status_aktif !== 0
+      })) : [];
 
       // Update penyimpanan lokal
       if (parsedStudents.length > 0) this.saveStudents(parsedStudents);

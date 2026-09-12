@@ -9,6 +9,7 @@ export interface UserAccount {
   role: UserRole;
   id_siswa?: string; // for WALI, links to their child
   nisn?: string; // for WALI, links to child's NISN
+  nik?: string; // for WALI, fallback to child's NIK if NISN is empty
 }
 
 export interface Student {
@@ -68,6 +69,7 @@ export interface KategoriDana {
 export interface KeuanganRecord {
   id_keuangan: string;
   tanggal: string;
+  waktu?: string; // Real-time timestamp HH:mm:ss
   jenis: KeuanganType;
   kategori: string; // Masuk: SPP, Donasi, Infaq, Bantuan, Pendapatan lain; Keluar: Gaji, Operasional, ATK, Kegiatan, Perawatan
   nominal: number;

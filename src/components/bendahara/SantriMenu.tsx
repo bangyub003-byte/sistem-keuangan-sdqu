@@ -40,6 +40,32 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importText, setImportText] = useState('');
 
+  // Ekstrak nama kelas polos tanpa embel-embel (misal: "1A" dari "1A - Abu Bakar Ash-Shiddiq" atau "1A")
+  const getPlainClassName = (kelasStr: string = ''): string => {
+    const trimmed = (kelasStr || '').trim();
+    if (!trimmed) return '';
+    if (trimmed.includes('-')) {
+      return trimmed.split('-')[0].trim();
+    }
+    return trimmed;
+  };
+
+  // Daftar kelas dinamis diambil langsung dari data santri aktual di sistem
+  const dynamicClasses = React.useMemo(() => {
+    const set = new Set<string>();
+    (students || []).forEach(s => {
+      const plain = getPlainClassName(s.kelas);
+      if (plain) set.add(plain);
+    });
+    // Fallback kelas standar jika data santri belum ada
+    if (set.size === 0) {
+      ['1A', '1B', '2A', '2B', '3A', '3B', '4A', '4B', '5A', '6A'].forEach(c => set.add(c));
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+  }, [students]);
+
+  const defaultSppNominal = setting?.spp_default_nominal || 85000;
+
   // Form State
   const initialFormState: Omit<Student, 'id_siswa'> = {
     nisn: '',
@@ -48,45 +74,45 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
     tempat_lahir: 'Gunungkidul',
     tanggal_lahir: '2017-01-01',
     jenis_kelamin: 'L',
-    kelas: '1A - Abu Bakar Ash-Shiddiq',
+    kelas: dynamicClasses[0] || '1A',
     nama_wali: '',
     no_hp: '',
     alamat: '',
     foto: '',
     status_aktif: true,
-    spp_nominal: 500000,
+    spp_nominal: defaultSppNominal,
     spp_kategori: 'REGULER',
     spp_catatan: ''
   };
 
   const [formData, setFormData] = useState<Omit<Student, 'id_siswa'>>(initialFormState);
 
-  const classesList = [
-    '1A - Abu Bakar Ash-Shiddiq',
-    '1B - Umar bin Khattab',
-    '2A - Umar bin Khattab',
-    '2B - Utsman bin Affan',
-    '3A - Ali bin Abi Thalib',
-    '3B - Khadijah',
-    '4A - Ali bin Abi Thalib',
-    '4B - Aisyah',
-    '5A - Khalid bin Walid',
-    '6A - Thariq bin Ziyad'
-  ];
-
   const filteredStudents = students.filter(s => {
+    const searchLower = searchTerm.toLowerCase();
     const matchSearch =
-      s.nama.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.nisn.includes(searchTerm) ||
-      s.nik.includes(searchTerm) ||
-      s.nama_wali.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchKelas = filterKelas ? s.kelas === filterKelas : true;
-    return matchSearch && matchKelas;
+      (s.nama || '').toLowerCase().includes(searchLower) ||
+      (s.nisn || '').includes(searchTerm) ||
+      (s.nik || '').includes(searchTerm) ||
+      (s.nama_wali || '').toLowerCase().includes(searchLower);
+
+    if (!matchSearch) return false;
+    if (!filterKelas) return true;
+
+    // Pencocokan fleksibel agar tidak 0 murid jika ada format nama kelas berbeda
+    const plain = getPlainClassName(s.kelas).toLowerCase();
+    const raw = (s.kelas || '').trim().toLowerCase();
+    const target = filterKelas.trim().toLowerCase();
+
+    return plain === target || raw === target || raw.startsWith(target + ' ') || raw.startsWith(target + '-');
   });
 
   const handleOpenAdd = () => {
     setEditingStudent(null);
-    setFormData(initialFormState);
+    setFormData({
+      ...initialFormState,
+      spp_nominal: setting?.spp_default_nominal || 85000,
+      kelas: dynamicClasses[0] || '1A'
+    });
     setIsAddModalOpen(true);
   };
 
@@ -105,7 +131,7 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
       alamat: student.alamat,
       foto: student.foto || '',
       status_aktif: student.status_aktif,
-      spp_nominal: student.spp_nominal,
+      spp_nominal: student.spp_nominal || setting?.spp_default_nominal || 85000,
       spp_kategori: student.spp_kategori || 'REGULER',
       spp_catatan: student.spp_catatan || ''
     });
@@ -114,18 +140,40 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.nisn || !formData.nama) {
-      alert('Mohon isi NISN dan Nama Santri.');
+    const cleanNama = (formData.nama || '').trim();
+    const cleanNisn = (formData.nisn || '').trim();
+    const cleanNik = (formData.nik || '').trim();
+
+    if (!cleanNama) {
+      alert('Mohon isi Nama Lengkap Santri.');
       return;
     }
 
+    if (!cleanNisn && !cleanNik) {
+      alert('Mohon isi minimal salah satu antara NISN atau NIK Santri.');
+      return;
+    }
+
+    const currentDefault = setting?.spp_default_nominal || 85000;
+    const finalNominal = (formData.spp_nominal && Number(formData.spp_nominal) > 0)
+      ? Number(formData.spp_nominal)
+      : currentDefault;
+
+    const payload = {
+      ...formData,
+      nama: cleanNama,
+      nisn: cleanNisn,
+      nik: cleanNik,
+      spp_nominal: finalNominal
+    };
+
     if (editingStudent) {
       onUpdateStudent({
-        ...formData,
+        ...payload,
         id_siswa: editingStudent.id_siswa
       });
     } else {
-      onAddStudent(formData);
+      onAddStudent(payload);
     }
     setIsAddModalOpen(false);
   };
@@ -161,11 +209,17 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
 
   const handleProcessImport = () => {
     try {
+      const currentDefault = setting?.spp_default_nominal || 85000;
+
       // Try JSON first
       if (importText.trim().startsWith('[')) {
         const parsed = JSON.parse(importText);
         if (Array.isArray(parsed)) {
-          onBulkImport(parsed);
+          const formatted = parsed.map((p: any) => ({
+            ...p,
+            spp_nominal: (p.spp_nominal && Number(p.spp_nominal) > 0) ? Number(p.spp_nominal) : currentDefault
+          }));
+          if (handleBulk) handleBulk(formatted);
           setIsImportModalOpen(false);
           setImportText('');
           return;
@@ -178,21 +232,26 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
       lines.forEach((line, idx) => {
         if (idx === 0 && line.toLowerCase().includes('nisn')) return; // skip header
         const cols = line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
-        if (cols.length >= 3 && cols[0]) {
+        const rawNisn = cols[0] || '';
+        const rawNik = cols[1] || '';
+        const rawNama = cols[2] || '';
+
+        if (rawNama && (rawNisn || rawNik)) {
+          const customSpp = Number(cols[10]);
           newItems.push({
-            nisn: cols[0],
-            nik: cols[1] || cols[0],
-            nama: cols[2],
+            nisn: rawNisn,
+            nik: rawNik || rawNisn,
+            nama: rawNama,
             tempat_lahir: cols[3] || 'Gunungkidul',
             tanggal_lahir: cols[4] || '2017-01-01',
             jenis_kelamin: (cols[5]?.toUpperCase() === 'P' ? 'P' : 'L'),
-            kelas: cols[6] || '1A',
+            kelas: cols[6] ? getPlainClassName(cols[6]) : '1A',
             nama_wali: cols[7] || 'Wali Santri',
             no_hp: cols[8] || '0812-0000-0000',
             alamat: cols[9] || 'Playen, Gunungkidul',
             foto: '',
             status_aktif: true,
-            spp_nominal: Number(cols[10]) || 500000,
+            spp_nominal: (customSpp && !isNaN(customSpp) && customSpp > 0) ? customSpp : currentDefault,
             spp_kategori: 'REGULER',
             spp_catatan: ''
           });
@@ -204,7 +263,7 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
         setIsImportModalOpen(false);
         setImportText('');
       } else {
-        alert('Data import tidak valid atau kosong. Format minimal: NISN,NIK,Nama');
+        alert('Data import tidak valid atau kosong. Format minimal: NISN/NIK,Nama');
       }
     } catch (err: any) {
       alert('Gagal memproses data import: ' + err.message);
@@ -267,7 +326,7 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
             className="w-full py-2 px-3 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-emerald-600 focus:bg-white"
           >
             <option value="">Semua Tingkat / Kelas</option>
-            {classesList.map(k => (
+            {dynamicClasses.map(k => (
               <option key={k} value={k}>{k}</option>
             ))}
           </select>
@@ -417,17 +476,16 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    NISN Santri <span className="text-rose-500">*</span>
+                    NISN Santri
                   </label>
                   <input
                     type="text"
-                    required
                     value={formData.nisn}
                     onChange={(e) => setFormData({ ...formData, nisn: e.target.value })}
                     placeholder="Contoh: 0015678901"
                     className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
                   />
-                  <p className="text-[10px] text-slate-400 mt-0.5">Sekaligus menjadi username login wali murid</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Username login wali murid (jika kosong otomatis menggunakan NIK)</p>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
@@ -435,12 +493,12 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
                   </label>
                   <input
                     type="text"
-                    required
                     value={formData.nik}
                     onChange={(e) => setFormData({ ...formData, nik: e.target.value })}
                     placeholder="Contoh: 3403011205160001"
                     className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
                   />
+                  <p className="text-[10px] text-slate-400 mt-0.5">Identitas kependudukan & username login jika NISN kosong</p>
                 </div>
               </div>
 
@@ -512,7 +570,7 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
                     onChange={(e) => setFormData({ ...formData, kelas: e.target.value })}
                     className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
                   >
-                    {classesList.map(k => (
+                    {dynamicClasses.map(k => (
                       <option key={k} value={k}>{k}</option>
                     ))}
                   </select>
@@ -583,7 +641,7 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
                       onChange={(e) => setFormData({ ...formData, spp_nominal: Number(e.target.value) })}
                       className="w-full px-3 py-2 text-sm font-bold text-emerald-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600"
                     />
-                    <p className="text-[10px] text-slate-500 mt-0.5">Standar umum sekolah: Rp500.000</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Standar umum sekolah saat ini: {formatRupiah(defaultSppNominal)}/bulan</p>
                   </div>
 
                   <div>
@@ -659,9 +717,12 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
             </div>
 
             <div className="p-6 space-y-4">
-              <div className="text-xs text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-200 font-mono">
-                Format urutan CSV per baris:<br/>
-                NISN,NIK,Nama Lengkap,Tempat Lahir,Tanggal Lahir,L/P,Kelas,Nama Wali,No WA,Alamat,SPP Nominal
+              <div className="text-xs text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                <span className="font-bold text-slate-800">Format urutan CSV per baris:</span>
+                <p className="font-mono mt-1 text-[11px] text-slate-700">NISN,NIK,Nama Lengkap,Tempat Lahir,Tanggal Lahir,L/P,Kelas,Nama Wali,No WA,Alamat,SPP Nominal</p>
+                <p className="text-[11px] text-emerald-700 mt-1.5">
+                  * Catatan: Jika SPP Nominal kosong/0, sistem otomatis menerapkan SPP Standar ({formatRupiah(defaultSppNominal)}) dari Pengaturan. Jika NISN kosong, login wali otomatis menggunakan NIK.
+                </p>
               </div>
 
               <div>

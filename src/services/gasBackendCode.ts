@@ -520,6 +520,18 @@ function handleLogin(ss, payload) {
   return { status: "error", message: "Username atau Password salah!" };
 }
 
+function getSettingDefaultSpp(ss) {
+  try {
+    var settings = getSheetRows(ss, "SETTING");
+    if (settings && settings.length > 0) {
+      var s = settings[0];
+      var nom = Number(s.spp_default_nominal);
+      if (nom && !isNaN(nom) && nom > 0) return nom;
+    }
+  } catch (e) {}
+  return 85000;
+}
+
 /**
  * 4. Tambah, Update, Delete & Import Murid
  */
@@ -527,10 +539,19 @@ function handleAddStudent(ss, student) {
   var sheet = ss.getSheetByName("SISWA");
   var newId = student.id_siswa || ("SISWA-" + Utilities.formatDate(new Date(), "GMT+7", "yyyyMMddHHmmss"));
 
+  var sppNominal = Number(student.spp_nominal);
+  if (!sppNominal || isNaN(sppNominal) || sppNominal <= 0) {
+    sppNominal = getSettingDefaultSpp(ss);
+  }
+
+  var cleanNisn = String(student.nisn || "").trim();
+  var cleanNik = String(student.nik || "").trim();
+  var loginIdentifier = cleanNisn || cleanNik;
+
   sheet.appendRow([
     newId,
-    student.nisn,
-    student.nik || "",
+    cleanNisn,
+    cleanNik,
     student.nama,
     student.tempat_lahir || "Gunungkidul",
     student.tanggal_lahir || "2017-01-01",
@@ -540,27 +561,38 @@ function handleAddStudent(ss, student) {
     student.no_hp || "",
     student.alamat || "",
     student.foto || "",
-    Number(student.spp_nominal) || 500000,
+    sppNominal,
     student.spp_kategori || "REGULER",
     student.spp_catatan || "",
     student.status_aktif !== false
   ]);
 
-  // Otomatis buat akun wali di sheet USER jika belum ada
+  // Otomatis buat akun wali di sheet USER jika belum ada (gunakan NISN, fallback ke NIK)
   var userSheet = ss.getSheetByName("USER");
-  if (userSheet) {
-    userSheet.appendRow([
-      "USR-" + student.nisn,
-      student.nisn,
-      student.nisn,
-      (student.nama_wali || "Wali") + " (Wali " + student.nama + ")",
-      "WALI",
-      newId,
-      student.nisn
-    ]);
+  if (userSheet && loginIdentifier) {
+    var users = getSheetRows(ss, "USER");
+    var exists = false;
+    for (var u = 0; u < users.length; u++) {
+      var uName = String(users[u].username || "").trim().toLowerCase();
+      if (uName === loginIdentifier.toLowerCase()) {
+        exists = true;
+        break;
+      }
+    }
+    if (!exists) {
+      userSheet.appendRow([
+        "USR-" + loginIdentifier,
+        loginIdentifier,
+        loginIdentifier,
+        (student.nama_wali || "Wali") + " (Wali " + student.nama + ")",
+        "WALI",
+        newId,
+        cleanNisn
+      ]);
+    }
   }
 
-  appendLog(ss, student.petugas || "Bendahara", "Menambah murid baru: " + student.nama + " (NISN: " + student.nisn + ")");
+  appendLog(ss, student.petugas || "Bendahara", "Menambah murid baru: " + student.nama + " (" + (cleanNisn ? "NISN: " + cleanNisn : "NIK: " + cleanNik) + ")");
   bumpVersion();
 
   return { status: "success", id_siswa: newId, message: "Data murid dan akun wali berhasil disimpan ke Spreadsheet!" };
@@ -570,7 +602,7 @@ function handleUpdateStudent(ss, student) {
   var sheet = ss.getSheetByName("SISWA");
   var data = sheet.getDataRange().getValues();
   for (var i = 1; i < data.length; i++) {
-    if (String(data[i][0]).trim() === String(student.id_siswa).trim() || String(data[i][1]).trim() === String(student.nisn).trim()) {
+    if (String(data[i][0]).trim() === String(student.id_siswa).trim() || String(data[i][1]).trim() === String(student.nisn).trim() || (student.nik && String(data[i][2]).trim() === String(student.nik).trim())) {
       var rowIdx = i + 1;
       sheet.getRange(rowIdx, 3).setValue(student.nik || "");
       sheet.getRange(rowIdx, 4).setValue(student.nama);
@@ -582,7 +614,7 @@ function handleUpdateStudent(ss, student) {
       sheet.getRange(rowIdx, 10).setValue(student.no_hp || "");
       sheet.getRange(rowIdx, 11).setValue(student.alamat || "");
       if (student.foto) sheet.getRange(rowIdx, 12).setValue(student.foto);
-      sheet.getRange(rowIdx, 13).setValue(Number(student.spp_nominal) || 500000);
+      sheet.getRange(rowIdx, 13).setValue(Number(student.spp_nominal) || getSettingDefaultSpp(ss));
       sheet.getRange(rowIdx, 14).setValue(student.spp_kategori || "REGULER");
       sheet.getRange(rowIdx, 15).setValue(student.spp_catatan || "");
       if (student.status_aktif !== undefined) sheet.getRange(rowIdx, 16).setValue(student.status_aktif);
@@ -598,27 +630,29 @@ function handleUpdateStudent(ss, student) {
 function handleDeleteStudent(ss, payload) {
   var sheet = ss.getSheetByName("SISWA");
   var data = sheet.getDataRange().getValues();
-  var target = String(payload.id_siswa || payload.nisn || "").trim();
+  var target = String(payload.id_siswa || payload.nisn || payload.nik || "").trim();
 
   for (var i = 1; i < data.length; i++) {
-    if (String(data[i][0]).trim() === target || String(data[i][1]).trim() === target) {
+    if (String(data[i][0]).trim() === target || String(data[i][1]).trim() === target || String(data[i][2]).trim() === target) {
       var studentName = data[i][3];
       var studentNisn = data[i][1];
+      var studentNik = data[i][2];
       sheet.deleteRow(i + 1);
 
-      // Hapus juga akun wali dari USER
+      // Hapus juga akun wali dari USER (cek nisn dan nik)
       var userSheet = ss.getSheetByName("USER");
       if (userSheet) {
         var uData = userSheet.getDataRange().getValues();
         for (var u = 1; u < uData.length; u++) {
-          if (String(uData[u][1]).trim() === String(studentNisn).trim()) {
+          var uN = String(uData[u][1]).trim();
+          if ((studentNisn && uN === String(studentNisn).trim()) || (studentNik && uN === String(studentNik).trim())) {
             userSheet.deleteRow(u + 1);
             break;
           }
         }
       }
 
-      appendLog(ss, payload.petugas || "Bendahara", "Menghapus murid: " + studentName + " (NISN: " + studentNisn + ")");
+      appendLog(ss, payload.petugas || "Bendahara", "Menghapus murid: " + studentName + " (" + (studentNisn ? "NISN: " + studentNisn : "NIK: " + studentNik) + ")");
       bumpVersion();
       return { status: "success", message: "Murid berhasil dihapus dari Spreadsheet!" };
     }
@@ -632,23 +666,39 @@ function handleBulkImportStudents(ss, payload) {
   var list = payload.students || [];
   if (!list.length) return { status: "error", message: "Daftar murid kosong" };
 
+  var defaultSpp = getSettingDefaultSpp(ss);
+
   var existing = sheet.getDataRange().getValues();
-  var existingNisns = {};
+  var existingIdentifiers = {};
   for (var i = 1; i < existing.length; i++) {
-    existingNisns[String(existing[i][1]).trim()] = true;
+    var exNisn = String(existing[i][1] || "").trim().toLowerCase();
+    var exNik = String(existing[i][2] || "").trim().toLowerCase();
+    if (exNisn) existingIdentifiers[exNisn] = true;
+    if (exNik) existingIdentifiers[exNik] = true;
   }
 
   var count = 0;
   for (var j = 0; j < list.length; j++) {
     var st = list[j];
-    var nisn = String(st.nisn || "").trim();
-    if (!nisn || existingNisns[nisn]) continue;
+    var cleanNisn = String(st.nisn || "").trim();
+    var cleanNik = String(st.nik || "").trim();
+    var loginIdentifier = cleanNisn || cleanNik;
+    if (!loginIdentifier) continue;
+
+    var idLower = loginIdentifier.toLowerCase();
+    if (existingIdentifiers[idLower]) continue;
+    existingIdentifiers[idLower] = true;
+
+    var sppNominal = Number(st.spp_nominal);
+    if (!sppNominal || isNaN(sppNominal) || sppNominal <= 0) {
+      sppNominal = defaultSpp;
+    }
 
     var newId = st.id_siswa || ("SISWA-" + Utilities.formatDate(new Date(), "GMT+7", "yyyyMMddHHmmss") + "-" + j);
     sheet.appendRow([
       newId,
-      nisn,
-      st.nik || "",
+      cleanNisn,
+      cleanNik,
       st.nama || "",
       st.tempat_lahir || "Gunungkidul",
       st.tanggal_lahir || "2017-01-01",
@@ -658,7 +708,7 @@ function handleBulkImportStudents(ss, payload) {
       st.no_hp || "",
       st.alamat || "",
       st.foto || "",
-      Number(st.spp_nominal) || 500000,
+      sppNominal,
       st.spp_kategori || "REGULER",
       st.spp_catatan || "",
       true
@@ -666,13 +716,13 @@ function handleBulkImportStudents(ss, payload) {
 
     if (userSheet) {
       userSheet.appendRow([
-        "USR-" + nisn,
-        nisn,
-        nisn,
+        "USR-" + loginIdentifier,
+        loginIdentifier,
+        loginIdentifier,
         (st.nama_wali || "Wali") + " (Wali " + (st.nama || "Murid") + ")",
         "WALI",
         newId,
-        nisn
+        cleanNisn
       ]);
     }
     count++;

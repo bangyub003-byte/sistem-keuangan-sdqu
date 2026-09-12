@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Student, Transaction, SchoolSetting, UserAccount, Announcement } from '../../types';
 import { PrintMode } from '../PrintReportView';
-import { calculateStudentSppStatus, getStandardTransactionTitle } from '../../utils/sppLogic';
+import { calculateStudentSppStatus, getStandardTransactionTitle, formatTransactionTimestamp } from '../../utils/sppLogic';
 import { createPaymentConfirmationWaUrl } from '../../utils/whatsappHelper';
 import {
   GraduationCap,
@@ -48,8 +48,13 @@ export const WaliDashboard: React.FC<WaliDashboardProps> = ({
   const [copiedNorek, setCopiedNorek] = useState(false);
   const [showQrisModal, setShowQrisModal] = useState(false);
 
-  // Strict filter: transactions exclusively for this student's NISN
-  const myTransactions = (transactions || []).filter(t => student && t.nisn === student.nisn && t.status !== 'CANCEL');
+  // Strict filter: transactions exclusively for this student's NISN or NIK
+  const myTransactions = (transactions || []).filter(t => 
+    student && (
+      (student.nisn && t.nisn === student.nisn) ||
+      (student.nik && t.nisn === student.nik)
+    ) && t.status !== 'CANCEL'
+  );
 
   // Automatic dynamic SPP calculation following the current calendar month
   const sppSummary = useMemo(() => {
@@ -408,12 +413,10 @@ export const WaliDashboard: React.FC<WaliDashboardProps> = ({
                     </div>
                     {m.status === 'LUNAS' && latestTrx && (
                       <div className="text-[8.5px] font-medium text-emerald-700/90 mt-1 pt-1 border-t border-emerald-200/60 leading-tight">
-                        <div>{latestTrx.tanggal}</div>
-                        {latestTrx.waktu && (
-                          <div className="font-mono text-[8px] text-emerald-800 font-semibold">
-                            {latestTrx.waktu} WIB
-                          </div>
-                        )}
+                        <div className="font-semibold">{latestTrx.tanggal}</div>
+                        <div className="font-mono text-[8px] text-emerald-800 font-bold">
+                          {latestTrx.waktu ? `${latestTrx.waktu} WIB` : (latestTrx.created_at?.includes(' ') ? latestTrx.created_at.split(' ')[1] : '')}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -446,8 +449,8 @@ export const WaliDashboard: React.FC<WaliDashboardProps> = ({
                     <tr key={trx.id_transaksi} className="hover:bg-slate-50">
                       <td className="p-3 whitespace-nowrap text-slate-600 font-medium">
                         <div className="font-semibold text-slate-800">{trx.tanggal}</div>
-                        <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                          {trx.waktu ? `${trx.waktu} WIB` : 'Waktu tercatat'}
+                        <div className="text-[10px] text-emerald-800 font-mono mt-0.5 font-semibold">
+                          {trx.waktu ? `${trx.waktu} WIB` : formatTransactionTimestamp(trx)}
                         </div>
                       </td>
                       <td className="p-3">

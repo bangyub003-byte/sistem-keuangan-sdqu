@@ -237,9 +237,12 @@ export function calculateStudentSppStatus(
   const startCalIdx = startMonthIdx >= 0 ? startMonthIdx : 6; // Default to Juli (idx 6)
   const startAbsolute = effectiveStartYear * 12 + startCalIdx;
 
-  // Filter transactions for this student
+  // Filter transactions for this student (supports matching by NISN or fallback NIK)
   const studentTransactions = (transactions || []).filter(
-    t => t.nisn === student.nisn && t.status !== 'CANCEL'
+    t => (
+      (student.nisn && t.nisn === student.nisn) ||
+      (student.nik && t.nisn === student.nik)
+    ) && t.status !== 'CANCEL'
   );
 
   const monthlyFee = student.spp_nominal || 500000;
@@ -403,5 +406,41 @@ export function calculateAllStudentsSppSummary(
     totalTunggakanAll,
     totalTunggakanSppOnly,
     totalPembayaranSppMasuk
+  };
+}
+
+/**
+ * Format real-time timestamp seragam di seluruh dashboard (tanggal & jam:menit:detik WIB)
+ */
+export function formatTransactionTimestamp(tanggal: string = '', waktu?: string): {
+  dateDisplay: string;
+  timeDisplay: string;
+  fullDisplay: string;
+} {
+  let datePart = String(tanggal || '').trim();
+  let timePart = String(waktu || '').trim();
+
+  // Handle jika tanggal mengandung waktu ISO atau spasi e.g. "2026-09-12 14:30:00"
+  if (datePart.includes('T') || (datePart.includes(' ') && !timePart)) {
+    const separator = datePart.includes('T') ? 'T' : ' ';
+    const parts = datePart.split(separator);
+    datePart = parts[0];
+    if (parts[1]) {
+      timePart = parts[1].replace('Z', '').split('.')[0];
+    }
+  }
+
+  // Jika timePart format HH:mm, lengkapi detik agar seragam
+  if (timePart && timePart.split(':').length === 2) {
+    timePart = `${timePart}:00`;
+  }
+
+  const timeDisplay = timePart ? `${timePart} WIB` : '';
+  const fullDisplay = timeDisplay ? `${datePart} ${timeDisplay}` : datePart;
+
+  return {
+    dateDisplay: datePart || '-',
+    timeDisplay,
+    fullDisplay
   };
 }
