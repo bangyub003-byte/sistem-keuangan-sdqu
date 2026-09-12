@@ -723,7 +723,10 @@ function handleProcessPayment(ss, trx) {
         Number(trx.nominal_bayar),
         ket,
         "",
-        trx.petugas || "Bendahara"
+        trx.petugas || "Bendahara",
+        "ACTIVE",
+        "",
+        "KAT-SPP"
       ]);
     }
   }

@@ -491,7 +491,9 @@ export class StorageService {
       kategori: data.kategori || 'SPP',
       nominal: data.nominal_bayar,
       keterangan: `Pembayaran ${data.jenis} ${data.bulan || ''} a.n ${data.nama_siswa} (${data.kelas})`,
-      petugas: data.petugas
+      petugas: data.petugas,
+      status: 'ACTIVE',
+      id_kategori: 'KAT-SPP'
     };
     this.saveKeuangan([newKeuangan, ...keuangan]);
 
@@ -589,7 +591,9 @@ export class StorageService {
     const newRec: KeuanganRecord = {
       ...record,
       id_keuangan: `KUG-${Date.now()}`,
-      petugas: operator,
+      petugas: operator || record.petugas || 'Bendahara',
+      status: record.status || 'ACTIVE',
+      id_kategori: record.id_kategori || '',
       bukti: formatDriveUrl(record.bukti)
     };
 

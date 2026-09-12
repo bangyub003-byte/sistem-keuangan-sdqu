@@ -293,7 +293,9 @@ export const INITIAL_KEUANGAN: KeuanganRecord[] = [
     nominal: 5000000,
     keterangan: "Donasi Hamba Allah untuk Operasional Tahfidz Qur'an",
     bukti: "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=150&auto=format&fit=crop&q=80",
-    petugas: "Usth. Nur Khasanah"
+    petugas: "Usth. Nur Khasanah",
+    status: "ACTIVE",
+    id_kategori: "KAT-DONASI"
   },
   {
     id_keuangan: "KUG-002",
@@ -303,7 +305,9 @@ export const INITIAL_KEUANGAN: KeuanganRecord[] = [
     nominal: 3500000,
     keterangan: "Infaq Jum'at Berkah Pengajian Wali Murid",
     bukti: "",
-    petugas: "Usth. Nur Khasanah"
+    petugas: "Usth. Nur Khasanah",
+    status: "ACTIVE",
+    id_kategori: "KAT-DONASI"
   },
   {
     id_keuangan: "KUG-003",
@@ -313,7 +317,9 @@ export const INITIAL_KEUANGAN: KeuanganRecord[] = [
     nominal: 7500000,
     keterangan: "Bantuan Hibah Sarana Kitab Suci Al-Qur'an & Tajwid",
     bukti: "",
-    petugas: "Usth. Nur Khasanah"
+    petugas: "Usth. Nur Khasanah",
+    status: "ACTIVE",
+    id_kategori: "KAT-BOS"
   },
   {
     id_keuangan: "KUG-004",
@@ -323,7 +329,9 @@ export const INITIAL_KEUANGAN: KeuanganRecord[] = [
     nominal: 12000000,
     keterangan: "Honor Mengajar Ustadz/Ustadzah Tahfidz & Pengajar Bulan Berjalan",
     bukti: "",
-    petugas: "Usth. Nur Khasanah"
+    petugas: "Usth. Nur Khasanah",
+    status: "ACTIVE",
+    id_kategori: "KAT-OPERASIONAL"
   },
   {
     id_keuangan: "KUG-005",
@@ -333,7 +341,9 @@ export const INITIAL_KEUANGAN: KeuanganRecord[] = [
     nominal: 1850000,
     keterangan: "Biaya Listrik PLN, Air PDAM, dan Internet Indihome Sekolah",
     bukti: "",
-    petugas: "Usth. Nur Khasanah"
+    petugas: "Usth. Nur Khasanah",
+    status: "ACTIVE",
+    id_kategori: "KAT-OPERASIONAL"
   },
   {
     id_keuangan: "KUG-006",
@@ -343,7 +353,9 @@ export const INITIAL_KEUANGAN: KeuanganRecord[] = [
     nominal: 850000,
     keterangan: "Pengadaan Kertas Ujian Tahfidz, Spidol Boardmarker, dan Buku Mutaba'ah",
     bukti: "",
-    petugas: "Usth. Nur Khasanah"
+    petugas: "Usth. Nur Khasanah",
+    status: "ACTIVE",
+    id_kategori: "KAT-OPERASIONAL"
   },
   {
     id_keuangan: "KUG-007",
@@ -353,7 +365,9 @@ export const INITIAL_KEUANGAN: KeuanganRecord[] = [
     nominal: 600000,
     keterangan: "Service & Cuci AC Ruang Kelas Tahfidz 1A dan 2A",
     bukti: "",
-    petugas: "Usth. Nur Khasanah"
+    petugas: "Usth. Nur Khasanah",
+    status: "ACTIVE",
+    id_kategori: "KAT-OPERASIONAL"
   }
 ];
 

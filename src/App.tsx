@@ -7,7 +7,8 @@ import {
   SchoolSetting,
   SyncStatus,
   UserRole,
-  Announcement
+  Announcement,
+  KategoriDana
 } from './types';
 import { StorageService } from './services/storageService';
 import { NavbarHeader, BendaharaTab } from './components/NavbarHeader';
@@ -36,6 +37,7 @@ export default function App() {
   const [setting, setSetting] = useState<SchoolSetting>(() => StorageService.getSetting());
   const [users, setUsers] = useState<UserAccount[]>(() => StorageService.getUsers());
   const [announcements, setAnnouncements] = useState<Announcement[]>(() => StorageService.getAnnouncements());
+  const [kategoriDana, setKategoriDana] = useState<KategoriDana[]>(() => StorageService.getKategoriDana());
 
   // Version tracking
   const [dataVersion, setDataVersion] = useState<string>(() => StorageService.getDataVersion());
@@ -105,6 +107,7 @@ export default function App() {
         if (res.students) setStudents(res.students);
         if (res.transactions) setTransactions(res.transactions);
         if (res.keuangan) setKeuangan(res.keuangan);
+        if (res.kategori_dana) setKategoriDana(res.kategori_dana);
         if (res.setting) setSetting(res.setting);
         if (res.users) setUsers(res.users);
         if (res.announcements) setAnnouncements(res.announcements);
@@ -408,12 +411,49 @@ export default function App() {
     }
   };
 
-  // Keuangan Add
+  // Keuangan Add (Field Petugas SELALU dari currentUser.nama)
   const handleAddKeuangan = async (rec: Omit<KeuanganRecord, 'id_keuangan'>) => {
     setSyncStatus('syncing');
     setSyncError(null);
-    const res = await StorageService.addKeuangan(rec, currentUser?.nama || 'Bendahara');
+    const petugasName = currentUser?.nama || 'Bendahara';
+    const recWithPetugas = {
+      ...rec,
+      petugas: petugasName
+    };
+    const res = await StorageService.addKeuangan(recWithPetugas, petugasName);
     setKeuangan(StorageService.getKeuangan());
+    if (res.gasResult && res.gasResult.status === 'error') {
+      setSyncStatus('error');
+      setSyncError(res.gasResult.message);
+    } else {
+      setSyncStatus('synced');
+      if (res.gasResult?.version) setDataVersion(res.gasResult.version);
+    }
+  };
+
+  // Keuangan Cancel
+  const handleCancelKeuangan = async (id_keuangan: string, reason: string) => {
+    setSyncStatus('syncing');
+    setSyncError(null);
+    const operatorName = currentUser?.nama || 'Bendahara';
+    const res = await StorageService.cancelKeuangan(id_keuangan, reason, operatorName);
+    setKeuangan(StorageService.getKeuangan());
+    if (res.gasResult && res.gasResult.status === 'error') {
+      setSyncStatus('error');
+      setSyncError(res.gasResult.message);
+    } else {
+      setSyncStatus('synced');
+      if (res.gasResult?.version) setDataVersion(res.gasResult.version);
+    }
+  };
+
+  // Kategori Dana Add
+  const handleAddKategoriDana = async (cat: { nama_kategori: string; keterangan?: string }) => {
+    setSyncStatus('syncing');
+    setSyncError(null);
+    const operatorName = currentUser?.nama || 'Bendahara';
+    const res = await StorageService.addKategoriDana(cat.nama_kategori, cat.keterangan || '', operatorName);
+    setKategoriDana(StorageService.getKategoriDana());
     if (res.gasResult && res.gasResult.status === 'error') {
       setSyncStatus('error');
       setSyncError(res.gasResult.message);
@@ -444,6 +484,7 @@ export default function App() {
     setStudents(StorageService.getStudents());
     setTransactions(StorageService.getTransactions());
     setKeuangan(StorageService.getKeuangan());
+    setKategoriDana(StorageService.getKategoriDana());
     setSetting(StorageService.getSetting());
     setUsers(StorageService.getUsers());
     setAnnouncements(StorageService.getAnnouncements());
@@ -570,6 +611,9 @@ export default function App() {
                     keuangan={keuangan}
                     operatorName={currentUser.nama}
                     onAddKeuangan={handleAddKeuangan}
+                    onCancelKeuangan={handleCancelKeuangan}
+                    kategoriDana={kategoriDana}
+                    onAddKategoriDana={handleAddKategoriDana}
                   />
                 )}
 

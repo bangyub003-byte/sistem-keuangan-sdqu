@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { KeuanganRecord, KeuanganType, KategoriDana } from '../../types';
 import { Plus, ArrowDownLeft, ArrowUpRight, Filter, Search, FileText, Image, Calendar, Tag, Wallet, Check, AlertTriangle, X } from 'lucide-react';
 
@@ -43,18 +43,44 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
   const [formKategori, setFormKategori] = useState('');
   const [isCustomKategori, setIsCustomKategori] = useState(false);
   const [customKategoriInput, setCustomKategoriInput] = useState('');
+  const [selectedSumberDana, setSelectedSumberDana] = useState('KAT-OPERASIONAL');
+  const [isAddingNewSumberDana, setIsAddingNewSumberDana] = useState(false);
+  const [newSumberDanaInput, setNewSumberDanaInput] = useState('');
   const [formNominal, setFormNominal] = useState<number>(0);
   const [formKeterangan, setFormKeterangan] = useState('');
   const [formBukti, setFormBukti] = useState('');
+
+  // Active Kategori Dana List
+  const activeKategoriList = useMemo(() => {
+    if (kategoriDana && kategoriDana.length > 0) {
+      return kategoriDana.filter(kd => kd.status_aktif !== false);
+    }
+    return [
+      { id_kategori: 'KAT-SPP', nama_kategori: 'SPP' },
+      { id_kategori: 'KAT-DONASI', nama_kategori: 'Donasi & Infaq' },
+      { id_kategori: 'KAT-TABUNGAN', nama_kategori: 'Tabungan Siswa' },
+      { id_kategori: 'KAT-KANTIN', nama_kategori: 'Kantin & Koperasi' },
+      { id_kategori: 'KAT-GEDUNG', nama_kategori: 'Uang Gedung' },
+      { id_kategori: 'KAT-BOS', nama_kategori: 'Bantuan / BOS' },
+      { id_kategori: 'KAT-OPERASIONAL', nama_kategori: 'Operasional' },
+      { id_kategori: 'KAT-LAIN', nama_kategori: 'Lain-lain' }
+    ];
+  }, [kategoriDana]);
+
+  const sumberDanaMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    activeKategoriList.forEach(k => {
+      map[k.id_kategori] = k.nama_kategori;
+    });
+    return map;
+  }, [activeKategoriList]);
 
   // Default preset categories
   const defaultMasukCategories = ['SPP', 'Donasi', 'Infaq', 'Bantuan', 'Pendapatan lain'];
   const defaultKeluarCategories = ['Gaji', 'Operasional', 'ATK', 'Kegiatan', 'Perawatan'];
 
   // Categories from KategoriDana sheet/state
-  const dynamicKatNames = kategoriDana
-    .filter(kd => kd.status_aktif !== false)
-    .map(kd => kd.nama_kategori);
+  const dynamicKatNames = activeKategoriList.map(kd => kd.nama_kategori);
 
   // Aggregated existing categories from records
   const existingCategories = Array.from(new Set(
@@ -73,10 +99,30 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
     setFormKategori(defaultCat);
     setIsCustomKategori(false);
     setCustomKategoriInput('');
+    setSelectedSumberDana('KAT-OPERASIONAL');
+    setIsAddingNewSumberDana(false);
+    setNewSumberDanaInput('');
     setFormNominal(0);
     setFormKeterangan('');
     setFormBukti('');
     setIsModalOpen(true);
+  };
+
+  const handleAddNewSumberDana = async () => {
+    const name = newSumberDanaInput.trim();
+    if (!name) return;
+
+    if (onAddKategoriDana) {
+      await onAddKategoriDana({
+        nama_kategori: name,
+        keterangan: 'Ditambahkan via Kas Keluar'
+      });
+    }
+
+    const genId = `KAT-${name.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10)}`;
+    setSelectedSumberDana(genId);
+    setNewSumberDanaInput('');
+    setIsAddingNewSumberDana(false);
   };
 
   const handleSave = (e: React.FormEvent) => {
@@ -98,14 +144,20 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
       });
     }
 
+    const chosenIdKategori = activeTab === 'KELUAR'
+      ? selectedSumberDana
+      : (activeKategoriList.find(kd => kd.nama_kategori.toLowerCase() === finalKategori.toLowerCase())?.id_kategori || 'KAT-DONASI');
+
     onAddKeuangan({
       tanggal: formTanggal,
       jenis: activeTab,
       kategori: finalKategori,
+      id_kategori: chosenIdKategori,
       nominal: formNominal,
       keterangan: formKeterangan,
       bukti: formBukti,
-      petugas: operatorName
+      petugas: operatorName,
+      status: 'ACTIVE'
     });
 
     setIsModalOpen(false);
@@ -140,6 +192,48 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
   const totalMasukAll = validKeuangan.filter(k => k.jenis === 'MASUK').reduce((a, b) => a + b.nominal, 0);
   const totalKeluarAll = validKeuangan.filter(k => k.jenis === 'KELUAR').reduce((a, b) => a + b.nominal, 0);
   const saldoKas = totalMasukAll - totalKeluarAll;
+
+  // Cek kecocokan kategori untuk data Masuk / Keluar
+  const isMatchCategory = (rec: KeuanganRecord, kd: { id_kategori: string; nama_kategori: string }) => {
+    if (rec.id_kategori && rec.id_kategori === kd.id_kategori) {
+      return true;
+    }
+    const katRec = (rec.kategori || '').toLowerCase().trim();
+    const targetName = kd.nama_kategori.toLowerCase().trim();
+    if (katRec === targetName) return true;
+
+    // Kecocokan keyword cerdas untuk data awal/legacy
+    if (kd.id_kategori === 'KAT-SPP' && katRec.includes('spp')) return true;
+    if (kd.id_kategori === 'KAT-DONASI' && (katRec.includes('donasi') || katRec.includes('infaq') || katRec.includes('sedekah'))) return true;
+    if (kd.id_kategori === 'KAT-TABUNGAN' && katRec.includes('tabungan')) return true;
+    if (kd.id_kategori === 'KAT-KANTIN' && (katRec.includes('kantin') || katRec.includes('koperasi'))) return true;
+    if (kd.id_kategori === 'KAT-GEDUNG' && (katRec.includes('gedung') || katRec.includes('wakaf') || katRec.includes('pembangunan'))) return true;
+    if (kd.id_kategori === 'KAT-BOS' && (katRec.includes('bantuan') || katRec.includes('bos') || katRec.includes('hibah'))) return true;
+    if (kd.id_kategori === 'KAT-OPERASIONAL' && (katRec.includes('operasional') || katRec.includes('gaji') || katRec.includes('atk') || katRec.includes('perawatan') || katRec.includes('kegiatan'))) return true;
+    if (kd.id_kategori === 'KAT-LAIN' && (katRec.includes('lain') || katRec.includes('pendapatan lain'))) return true;
+
+    return false;
+  };
+
+  const categoryBalances = useMemo(() => {
+    return activeKategoriList.map(kd => {
+      const masuk = validKeuangan
+        .filter(k => k.jenis === 'MASUK' && isMatchCategory(k, kd))
+        .reduce((sum, k) => sum + (k.nominal || 0), 0);
+
+      const keluar = validKeuangan
+        .filter(k => k.jenis === 'KELUAR' && isMatchCategory(k, kd))
+        .reduce((sum, k) => sum + (k.nominal || 0), 0);
+
+      return {
+        id_kategori: kd.id_kategori,
+        nama_kategori: kd.nama_kategori,
+        totalMasuk: masuk,
+        totalKeluar: keluar,
+        saldo: masuk - keluar
+      };
+    });
+  }, [activeKategoriList, validKeuangan]);
 
   const formatRupiah = (v: number) => 'Rp ' + (v || 0).toLocaleString('id-ID');
 
@@ -198,6 +292,40 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
           </div>
           <div className="text-xl font-extrabold text-slate-900 mt-2">{formatRupiah(saldoKas)}</div>
           <p className="text-[11px] text-sky-700 mt-1">Dana siap operasional sekolah</p>
+        </div>
+      </div>
+
+      {/* Saldo per Kategori Sumber Dana */}
+      <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-xs">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Wallet className="w-4 h-4 text-emerald-700" />
+            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+              Saldo per Kategori Sumber Dana
+            </h3>
+          </div>
+          <span className="text-[10px] text-slate-400 font-medium">
+            (Total Masuk - Total Keluar) data aktif
+          </span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {categoryBalances.map(cat => (
+            <div
+              key={cat.id_kategori}
+              className="p-3 rounded-xl border border-slate-200/80 bg-slate-50/50 hover:bg-slate-50 hover:border-slate-300 transition-all"
+            >
+              <div className="text-[11px] font-bold text-slate-600 truncate mb-1" title={cat.nama_kategori}>
+                Saldo {cat.nama_kategori}
+              </div>
+              <div className={`text-sm font-extrabold ${cat.saldo >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
+                {formatRupiah(cat.saldo)}
+              </div>
+              <div className="flex items-center justify-between text-[10px] text-slate-500 mt-1.5 pt-1.5 border-t border-slate-200/60">
+                <span className="text-emerald-700 font-medium">+{formatRupiah(cat.totalMasuk)}</span>
+                <span className="text-rose-700 font-medium">-{formatRupiah(cat.totalKeluar)}</span>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -297,6 +425,11 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
                         }`}>
                           {rec.kategori}
                         </span>
+                        {rec.jenis === 'KELUAR' && rec.id_kategori && (
+                          <span className="inline-block px-1.5 py-0.5 rounded font-medium text-[9px] bg-sky-50 text-sky-700 border border-sky-200" title={`Diambil dari: ${sumberDanaMap[rec.id_kategori] || rec.id_kategori}`}>
+                            Dana: {sumberDanaMap[rec.id_kategori] || rec.id_kategori}
+                          </span>
+                        )}
                         {rec.status === 'CANCEL' && (
                           <span className="inline-block px-1.5 py-0.5 rounded font-bold text-[9px] bg-rose-100 text-rose-700 border border-rose-200">
                             BATAL
@@ -455,6 +588,61 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
                 )}
               </div>
 
+              {/* Sumber Dana (Diambil dari Dana - WAJIB saat Kas Keluar) */}
+              {activeTab === 'KELUAR' && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-slate-700 uppercase">
+                      Diambil dari Dana <span className="text-rose-500">*</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingNewSumberDana(!isAddingNewSumberDana)}
+                      className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer"
+                    >
+                      {isAddingNewSumberDana ? 'Pilih dari Dropdown' : '+ Tambah Kategori Baru'}
+                    </button>
+                  </div>
+
+                  {isAddingNewSumberDana ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={newSumberDanaInput}
+                        onChange={(e) => setNewSumberDanaInput(e.target.value)}
+                        placeholder="Tulis nama kategori sumber dana baru..."
+                        className="flex-1 px-3 py-2 text-xs bg-white border border-emerald-500 ring-1 ring-emerald-500 rounded-lg focus:outline-hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddNewSumberDana}
+                        disabled={!newSumberDanaInput.trim()}
+                        className="px-3 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 rounded-lg cursor-pointer transition-colors"
+                      >
+                        Tambah
+                      </button>
+                    </div>
+                  ) : (
+                    <select
+                      required
+                      value={selectedSumberDana}
+                      onChange={(e) => setSelectedSumberDana(e.target.value)}
+                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
+                    >
+                      <option value="" disabled>-- Pilih Sumber Dana --</option>
+                      {activeKategoriList.map(kd => (
+                        <option key={kd.id_kategori} value={kd.id_kategori}>
+                          {kd.nama_kategori}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Diambil dari pos dana kategori sheet KATEGORI_DANA (mengisi kolom id_kategori di KEUANGAN).
+                  </p>
+                </div>
+              )}
+
               {/* Keterangan */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
@@ -484,6 +672,23 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
                 />
                 <p className="text-[10px] text-slate-400 mt-1">
                   File tersimpan di Google Drive terhubung & tautan tercatat di Sheet KEUANGAN.
+                </p>
+              </div>
+
+              {/* Petugas Pencatat (Selalu user login saat ini) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Petugas Pencatat
+                </label>
+                <input
+                  type="text"
+                  readOnly
+                  disabled
+                  value={operatorName || 'Petugas'}
+                  className="w-full px-3 py-2 text-xs font-bold bg-slate-100 text-slate-700 border border-slate-300 rounded-lg cursor-not-allowed select-none"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Otomatis terisi dari nama user akun yang sedang login saat ini.
                 </p>
               </div>
 
