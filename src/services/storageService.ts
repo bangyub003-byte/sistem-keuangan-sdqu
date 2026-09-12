@@ -231,8 +231,10 @@ export class StorageService {
       const checkUrl = `${gasUrl}${gasUrl.includes('?') ? '&' : '?'}action=getVersion&_t=${Date.now()}`;
       const res = await fetch(checkUrl, { method: 'GET' });
       const data = await res.json();
-      if (data && data.status === 'success' && data.version) {
-        return { success: true, version: String(data.version) };
+      const status = data?.status || data?.data?.status;
+      const version = data?.version || data?.data?.version;
+      if (status === 'success' && version) {
+        return { success: true, version: String(version) };
       }
       return { success: false };
     } catch {
@@ -245,11 +247,14 @@ export class StorageService {
       const pingUrl = `${url}${url.includes('?') ? '&' : '?'}action=ping&_t=${Date.now()}`;
       const res = await fetch(pingUrl, { method: 'GET' });
       const data = await res.json();
-      if (data && data.status === 'success') {
-        if (data.version) this.setDataVersion(data.version);
-        return { success: true, message: data.message || 'Koneksi Google Apps Script Aktif!' };
+      const status = data?.status || data?.data?.status;
+      const message = data?.message || data?.data?.message;
+      const version = data?.version || data?.data?.version;
+      if (status === 'success') {
+        if (version) this.setDataVersion(String(version));
+        return { success: true, message: message || 'Koneksi Google Apps Script Aktif!' };
       }
-      return { success: false, message: data.message || 'Respon Apps Script tidak sesuai format' };
+      return { success: false, message: message || 'Respon Apps Script tidak sesuai format' };
     } catch (err: any) {
       return { success: false, message: `Gagal menghubungi Apps Script: ${err.message || 'Periksa URL dan izin akses Anyone'}` };
     }
@@ -694,9 +699,10 @@ export class StorageService {
         const fetchUrl = `${gasUrl}${gasUrl.includes('?') ? '&' : '?'}action=getAllData&_t=${Date.now()}`;
         const res = await fetch(fetchUrl, { method: 'GET' });
         const json = await res.json();
-        if (json && json.status === 'success' && json.data) {
-          data = json.data;
-          remoteVersion = json.version || '';
+        const status = json?.status || json?.data?.status;
+        if (status === 'success') {
+          data = (json.students || json.transactions) ? json : (json.data || json);
+          remoteVersion = json.version || json.data?.version || '';
         }
       } catch (e) {
         console.warn('GET getAllData fallback to POST:', e);
@@ -705,9 +711,10 @@ export class StorageService {
       // 2. Jika GET gagal, coba POST GET_ALL_DATA
       if (!data) {
         const postRes = await this.callGasApi(gasUrl, 'GET_ALL_DATA');
-        if (postRes && postRes.status === 'success' && postRes.data) {
-          data = postRes.data;
-          remoteVersion = postRes.version || '';
+        const postStatus = postRes?.status || postRes?.data?.status;
+        if (postStatus === 'success') {
+          data = (postRes.students || postRes.transactions) ? postRes : (postRes.data || postRes);
+          remoteVersion = postRes.version || postRes.data?.version || '';
         }
       }
 

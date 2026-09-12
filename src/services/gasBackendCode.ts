@@ -68,10 +68,20 @@ function doGet(e) {
         version: getVersion()
       };
     } else if (action === "getAllData" || action === "getData") {
+      var allData = fetchAllSheetsData();
       result = {
         status: "success",
         version: getVersion(),
-        data: fetchAllSheetsData()
+        message: "Data seluruh sheet berhasil dimuat dari Spreadsheet!",
+        students: allData.students,
+        transactions: allData.transactions,
+        keuangan: allData.keuangan,
+        setting: allData.settings,
+        settings: allData.settings,
+        users: allData.users,
+        announcements: allData.announcements,
+        logs: allData.logs,
+        data: allData
       };
     } else {
       result = { status: "error", message: "Action tidak dikenal: " + action };
@@ -762,12 +772,21 @@ function handleUploadFile(payload) {
  */
 function handleSyncAllData(ss, payload) {
   checkAndInitSheets(ss);
+  var allData = fetchAllSheetsData();
 
   return {
     status: "success",
     version: getVersion(),
     message: "Sinkronisasi data Google Spreadsheet berhasil!",
-    data: fetchAllSheetsData()
+    students: allData.students,
+    transactions: allData.transactions,
+    keuangan: allData.keuangan,
+    setting: allData.settings,
+    settings: allData.settings,
+    users: allData.users,
+    announcements: allData.announcements,
+    logs: allData.logs,
+    data: allData
   };
 }
 
