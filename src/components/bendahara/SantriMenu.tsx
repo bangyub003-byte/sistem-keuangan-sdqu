@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Student, Transaction, SchoolSetting } from '../../types';
-import { Plus, Search, Edit3, Trash2, Download, Upload, Filter, Tag, Check, X, UserPlus, Phone, MapPin, Award, CreditCard, Eye } from 'lucide-react';
+import { Plus, Search, Edit3, Trash2, Download, Upload, Filter, Tag, Check, X, UserPlus, Phone, MapPin, Award, CreditCard, Eye, MessageCircle } from 'lucide-react';
 import { SantriDetailModal } from './SantriDetailModal';
 import { INITIAL_SETTING } from '../../data/initialData';
 
@@ -46,6 +46,13 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
     if (!trimmed) return '';
     if (trimmed.includes('-')) {
       return trimmed.split('-')[0].trim();
+    }
+    if (trimmed.includes('(')) {
+      return trimmed.split('(')[0].trim();
+    }
+    const match = trimmed.match(/^([1-6][A-Za-z]?)/i);
+    if (match) {
+      return match[1].toUpperCase();
     }
     return trimmed;
   };
@@ -387,7 +394,7 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
                         {s.jenis_kelamin}
                       </span>
                     </td>
-                    <td className="p-3 font-medium text-slate-800">{s.kelas}</td>
+                    <td className="p-3 font-medium text-slate-800">{getPlainClassName(s.kelas) || s.kelas}</td>
                     <td className="p-3">
                       <div className="font-extrabold text-emerald-900">{formatRupiah(s.spp_nominal)}</div>
                       {s.spp_kategori && s.spp_kategori !== 'REGULER' ? (
@@ -401,9 +408,20 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
                     </td>
                     <td className="p-3">
                       <div className="font-semibold text-slate-800">{s.nama_wali}</div>
-                      <div className="text-slate-500 font-mono text-[10px] flex items-center gap-1">
+                      <div className="text-slate-500 font-mono text-[10px] flex items-center gap-1 mt-0.5">
                         <Phone className="w-2.5 h-2.5 text-emerald-600" />
-                        <span>{s.no_hp}</span>
+                        <span>{s.no_hp || '-'}</span>
+                        {s.no_hp && s.no_hp !== '-' && (
+                          <a
+                            href={`https://wa.me/${s.no_hp.replace(/\D/g, '').startsWith('0') ? '62' + s.no_hp.replace(/\D/g, '').slice(1) : s.no_hp.replace(/\D/g, '')}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Chat WhatsApp Wali Murid"
+                            className="text-emerald-700 hover:text-emerald-900 ml-1 inline-flex items-center cursor-pointer"
+                          >
+                            <MessageCircle className="w-3 h-3 text-emerald-600" />
+                          </a>
+                        )}
                       </div>
                     </td>
                     <td className="p-3 text-center">

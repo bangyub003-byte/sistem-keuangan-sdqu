@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Student, Transaction, SchoolSetting } from '../../types';
 import { Search, CreditCard, Printer, CheckCircle, AlertCircle, XCircle, User, Calendar, Award, RotateCcw, FileText, Check, ShieldAlert, Plus, PenTool, MessageCircle, Phone } from 'lucide-react';
 import { createPaymentConfirmationWaUrl, createTunggakanReminderWaUrl } from '../../utils/whatsappHelper';
-import { calculateStudentSppStatus, getStandardTransactionTitle, getAcademicYearMonths } from '../../utils/sppLogic';
+import { calculateStudentSppStatus, getStandardTransactionTitle, getAcademicYearMonths, formatTransactionTimestamp } from '../../utils/sppLogic';
 
 interface PembayaranMenuProps {
   students: Student[];
@@ -45,10 +45,11 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
   useEffect(() => {
     if (selectedStudentFromParent) {
       setSelectedStudent(selectedStudentFromParent);
-      setCustomTagihan(selectedStudentFromParent.spp_nominal || 500000);
-      setNominalBayar(selectedStudentFromParent.spp_nominal || 500000);
+      const defaultSpp = selectedStudentFromParent.spp_nominal || setting?.spp_default_nominal || 85000;
+      setCustomTagihan(defaultSpp);
+      setNominalBayar(defaultSpp);
     }
-  }, [selectedStudentFromParent]);
+  }, [selectedStudentFromParent, setting?.spp_default_nominal]);
 
   // Form Payment inputs
   const [paymentType, setPaymentType] = useState('SPP Bulanan');
@@ -56,8 +57,8 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
   const [manualPaymentInput, setManualPaymentInput] = useState('');
   const [customPaymentTypes, setCustomPaymentTypes] = useState<string[]>([]);
   const [selectedMonth, setSelectedMonth] = useState('September 2026');
-  const [customTagihan, setCustomTagihan] = useState<number>(selectedStudent?.spp_nominal || 500000);
-  const [nominalBayar, setNominalBayar] = useState<number>(selectedStudent?.spp_nominal || 500000);
+  const [customTagihan, setCustomTagihan] = useState<number>(selectedStudent?.spp_nominal || setting?.spp_default_nominal || 85000);
+  const [nominalBayar, setNominalBayar] = useState<number>(selectedStudent?.spp_nominal || setting?.spp_default_nominal || 85000);
   const [keterangan, setKeterangan] = useState('');
   const [statusMode, setStatusMode] = useState<'LUNAS' | 'KURANG'>('LUNAS');
 
@@ -72,8 +73,9 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
   // When selected student changes, update defaults
   const handleSelectStudent = (st: Student) => {
     setSelectedStudent(st);
-    setCustomTagihan(st.spp_nominal || 500000);
-    setNominalBayar(st.spp_nominal || 500000);
+    const nominal = st.spp_nominal || setting?.spp_default_nominal || 85000;
+    setCustomTagihan(nominal);
+    setNominalBayar(nominal);
     setStatusMode('LUNAS');
   };
 
@@ -221,7 +223,7 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
     } else if (totalTunggakan && totalTunggakan > 0) {
       rincian = `• *Total Kekurangan Administrasi*: *Rp ${totalTunggakan.toLocaleString('id-ID')}*\n\n`;
     } else {
-      rincian = `• *Status Administrasi*: Mengingatkan kewajiban SPP bulan berjalan sebesar *Rp ${(st.spp_nominal || 500000).toLocaleString('id-ID')}*.\n\n`;
+      rincian = `• *Status Administrasi*: Mengingatkan kewajiban SPP bulan berjalan sebesar *Rp ${(st.spp_nominal || setting?.spp_default_nominal || 85000).toLocaleString('id-ID')}*.\n\n`;
     }
 
     const rekening = (setting.no_rekening || setting.nama_bank)
@@ -241,9 +243,17 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
   };
 
   const monthsList = useMemo(() => {
-    const academicMonths = getAcademicYearMonths(setting.tahun_ajaran);
+    const startMonth = selectedStudent?.spp_mulai_bulan || setting.spp_mulai_bulan;
+    const startYear = selectedStudent?.spp_mulai_tahun || setting.spp_mulai_tahun;
+    const academicMonths = getAcademicYearMonths(setting.tahun_ajaran, new Date(), startMonth, startYear);
     return academicMonths.map(m => m.label);
-  }, [setting.tahun_ajaran]);
+  }, [
+    setting.tahun_ajaran,
+    setting.spp_mulai_bulan,
+    setting.spp_mulai_tahun,
+    selectedStudent?.spp_mulai_bulan,
+    selectedStudent?.spp_mulai_tahun
+  ]);
 
   // SPP Summary & Status per Bulan untuk Murid Terpilih
   const studentSppSummary = useMemo(() => {
@@ -256,7 +266,13 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
       setting.spp_mulai_bulan,
       setting.spp_mulai_tahun
     );
-  }, [selectedStudent, transactions, setting]);
+  }, [
+    selectedStudent,
+    transactions,
+    setting.tahun_ajaran,
+    setting.spp_mulai_bulan,
+    setting.spp_mulai_tahun
+  ]);
 
   const checkMonthIsLunas = (monthLabel: string) => {
     if (!studentSppSummary) return false;
@@ -269,14 +285,16 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
 
   // Otomatis arahkan selectedMonth ke bulan pertama yang belum lunas
   useEffect(() => {
-    if (!studentSppSummary || monthsList.length === 0) return;
-    if (checkMonthIsLunas(selectedMonth)) {
+    if (monthsList.length === 0) return;
+    if (!monthsList.includes(selectedMonth) || checkMonthIsLunas(selectedMonth)) {
       const firstUnpaid = monthsList.find(m => !checkMonthIsLunas(m));
       if (firstUnpaid) {
         setSelectedMonth(firstUnpaid);
+      } else if (monthsList.length > 0) {
+        setSelectedMonth(monthsList[0]);
       }
     }
-  }, [selectedStudent?.nisn, transactions, monthsList]);
+  }, [selectedStudent?.nisn, transactions, monthsList, studentSppSummary]);
 
   const paymentTypeOptions = [
     'SPP Bulanan',
@@ -691,12 +709,14 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
                   </td>
                 </tr>
               ) : (
-                studentTransactions.map(trx => (
+                studentTransactions.map(trx => {
+                  const ts = formatTransactionTimestamp(trx.tanggal, trx.waktu);
+                  return (
                   <tr key={trx.id_transaksi} className={`hover:bg-slate-50 ${trx.status === 'CANCEL' ? 'bg-rose-50/50 opacity-80' : ''}`}>
                     <td className="p-3 font-mono font-medium text-slate-600">{trx.id_transaksi}</td>
                     <td className="p-3 whitespace-nowrap text-slate-600">
-                      <div>{trx.tanggal}</div>
-                      {trx.waktu && <div className="text-[10px] text-slate-400 font-mono">{trx.waktu} WIB</div>}
+                      <div className="font-semibold text-slate-900">{ts.dateDisplay}</div>
+                      {ts.timeDisplay && <div className="text-[10px] text-slate-400 font-mono">{ts.timeDisplay}</div>}
                     </td>
                     <td className="p-3">
                       <div className="font-bold text-slate-900">{getStandardTransactionTitle(trx)}</div>
@@ -816,7 +836,8 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>

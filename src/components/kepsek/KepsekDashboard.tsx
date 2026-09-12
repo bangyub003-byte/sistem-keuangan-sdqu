@@ -33,8 +33,15 @@ export const KepsekDashboard: React.FC<KepsekDashboardProps> = ({
 
   // Automatic dynamic SPP calculation following the current calendar month across all students
   const sppAllSummary = useMemo(() => {
-    return calculateAllStudentsSppSummary(students, transactions, setting.tahun_ajaran);
-  }, [students, transactions, setting.tahun_ajaran]);
+    return calculateAllStudentsSppSummary(
+      students,
+      transactions,
+      setting.tahun_ajaran,
+      new Date(),
+      setting.spp_mulai_bulan,
+      setting.spp_mulai_tahun
+    );
+  }, [students, transactions, setting.tahun_ajaran, setting.spp_mulai_bulan, setting.spp_mulai_tahun]);
   
   const totalBayarMasuk = transactions
     .filter(t => t.status !== 'CANCEL')

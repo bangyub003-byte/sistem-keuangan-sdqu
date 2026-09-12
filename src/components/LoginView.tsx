@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { SchoolSetting, UserAccount, Student } from '../types';
 import { StorageService } from '../services/storageService';
-import { ShieldCheck, School, GraduationCap, Lock, User, ArrowRight, AlertCircle, Sparkles, Eye, EyeOff } from 'lucide-react';
+import { ShieldCheck, School, GraduationCap, Lock, User, ArrowRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 interface LoginViewProps {
   setting: SchoolSetting;
@@ -102,11 +102,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ setting, users = [], stude
         
         {/* Header Branding */}
         <div className="bg-gradient-to-br from-emerald-800 via-emerald-900 to-teal-950 p-6 sm:p-7 text-center text-white relative">
-          <div className="absolute top-3 right-3 flex items-center gap-1 bg-emerald-700/60 px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-wider text-emerald-100 border border-emerald-500/40">
-            <Sparkles className="w-3 h-3 text-amber-300" />
-            <span>TA {setting.tahun_ajaran}</span>
-          </div>
-
           <div className="w-18 h-18 sm:w-20 sm:h-20 mx-auto mb-3 rounded-2xl bg-white p-2 shadow-lg flex items-center justify-center border-2 border-emerald-300/40">
             {setting.logo ? (
               <img

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Student, Transaction, SchoolSetting } from '../../types';
-import { calculateStudentSppStatus, getStandardTransactionTitle } from '../../utils/sppLogic';
+import { calculateStudentSppStatus, getStandardTransactionTitle, formatTransactionTimestamp } from '../../utils/sppLogic';
 import { createPaymentConfirmationWaUrl, createTunggakanReminderWaUrl } from '../../utils/whatsappHelper';
 import { 
   X, 
@@ -58,7 +58,7 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
     spp_mulai_bulan: string;
     spp_mulai_tahun: number;
   }>({
-    spp_nominal: student.spp_nominal || setting.spp_default_nominal || 500000,
+    spp_nominal: student.spp_nominal || setting.spp_default_nominal || 85000,
     spp_kategori: student.spp_kategori || 'REGULER',
     spp_catatan: student.spp_catatan || '',
     spp_mulai_bulan: student.spp_mulai_bulan || setting.spp_mulai_bulan || 'Juli',
@@ -392,13 +392,14 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
                     <tbody className="divide-y divide-slate-200">
                       {studentTransactions.map((trx, idx) => {
                         const waUrl = createPaymentConfirmationWaUrl(setting, student, trx);
+                        const ts = formatTransactionTimestamp(trx.tanggal, trx.waktu);
                         return (
                           <tr key={trx.id_transaksi} className="hover:bg-slate-50">
                             <td className="p-2.5 text-center text-slate-400">{idx + 1}</td>
                             <td className="p-2.5 whitespace-nowrap">
-                              <div className="font-semibold text-slate-900">{trx.tanggal}</div>
-                              {trx.waktu && (
-                                <div className="text-[10px] text-slate-500 font-mono">{trx.waktu} WIB</div>
+                              <div className="font-semibold text-slate-900">{ts.dateDisplay}</div>
+                              {ts.timeDisplay && (
+                                <div className="text-[10px] text-slate-500 font-mono">{ts.timeDisplay}</div>
                               )}
                             </td>
                             <td className="p-2.5">

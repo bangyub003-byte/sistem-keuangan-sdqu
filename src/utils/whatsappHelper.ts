@@ -97,3 +97,40 @@ ${setting.no_wa ? `Kontak: ${setting.no_wa}` : ''}`;
 
   return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
 }
+
+/**
+ * Generates a polite WhatsApp URL from Wali Murid to Bendahara Sekolah regarding a payment transaction.
+ */
+export function createWaliToBendaharaWaUrl(
+  setting: SchoolSetting,
+  student: Student,
+  transaction?: Transaction
+): string {
+  const bendaharaPhone = formatPhoneNumberForWa(setting.no_wa);
+  const formatRupiah = (v: number) => 'Rp ' + (v || 0).toLocaleString('id-ID');
+  const namaWali = student.nama_wali || 'Wali Murid';
+
+  let rincianText = '';
+  if (transaction) {
+    const trxTime = transaction.waktu ? ` pukul ${transaction.waktu} WIB` : '';
+    rincianText = `Saya bermaksud menanyakan / konfirmasi terkait transaksi pembayaran berikut:\n` +
+      `• *No. Kuitansi/Transaksi*: ${transaction.id_transaksi}\n` +
+      `• *Jenis Pembayaran*: ${transaction.jenis}${transaction.bulan ? ` (${transaction.bulan})` : ''}\n` +
+      `• *Tanggal*: ${transaction.tanggal}${trxTime}\n` +
+      `• *Nominal*: ${formatRupiah(transaction.nominal_bayar)}\n` +
+      `• *Status*: ${transaction.status}\n\n`;
+  } else {
+    rincianText = `Saya bermaksud menanyakan / konfirmasi terkait administrasi pembayaran ananda.\n\n`;
+  }
+
+  const text =
+`Assalamu'alaikum Warahmatullahi Wabarakatuh, Bendahara *${setting.nama_sekolah}*.
+Perkenalkan saya *${namaWali}*, wali dari ananda *${student.nama}* (Kelas: ${student.kelas}, NISN: ${student.nisn || student.nik || '-'}).
+
+${rincianText}Mohon informasi dan konfirmasinya. Terima kasih banyak.
+Jazakumullahu khairan katsiran.
+Wassalamu'alaikum Warahmatullahi Wabarakatuh.`;
+
+  return `https://wa.me/${bendaharaPhone}?text=${encodeURIComponent(text)}`;
+}
+

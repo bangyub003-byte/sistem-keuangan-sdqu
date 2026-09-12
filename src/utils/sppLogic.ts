@@ -1,4 +1,5 @@
 import { Student, Transaction } from '../types';
+import { StorageService } from '../services/storageService';
 
 export const INDONESIAN_MONTHS = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -65,10 +66,9 @@ export function getAcademicStartYear(settingTahunAjaran?: string, referenceDate:
 }
 
 /**
- * Generates the full 12 months sequence of the Indonesian academic year (Juli to Juni)
- * and marks which months are already due based on the current system date.
+ * Generates all 12 calendar months for an Indonesian academic year (Juli to Juni).
  */
-export function getAcademicYearMonths(settingTahunAjaran?: string, referenceDate: Date = new Date()): AcademicMonth[] {
+export function getAllAcademicYearMonths(settingTahunAjaran?: string, referenceDate: Date = new Date()): AcademicMonth[] {
   const startYear = getAcademicStartYear(settingTahunAjaran, referenceDate);
   const curCalYear = referenceDate.getFullYear();
   const curCalMonth = referenceDate.getMonth();
@@ -95,6 +95,38 @@ export function getAcademicYearMonths(settingTahunAjaran?: string, referenceDate
       isCurrentMonth
     };
   });
+}
+
+/**
+ * Generates the active SPP obligation months sequence of the academic year,
+ * filtering out any months prior to the configured start month/year (titik awal kewajiban SPP).
+ * If startMonthName or startYearOverride is not provided, reads the latest configuration from StorageService.
+ */
+export function getAcademicYearMonths(
+  settingTahunAjaran?: string,
+  referenceDate: Date = new Date(),
+  startMonthName?: string,
+  startYearOverride?: number
+): AcademicMonth[] {
+  const fullMonths = getAllAcademicYearMonths(settingTahunAjaran, referenceDate);
+
+  // Ambil titik awal kewajiban SPP: prioritas parameter, lalu setting tersimpan di StorageService, lalu default 'Juli'
+  const currentSetting = StorageService.getSetting();
+  const effectiveStartMonthName = startMonthName || currentSetting.spp_mulai_bulan || 'Juli';
+  const startYear = getAcademicStartYear(settingTahunAjaran || currentSetting.tahun_ajaran, referenceDate);
+  const effectiveStartYear = startYearOverride || currentSetting.spp_mulai_tahun || startYear;
+
+  const startMonthIdx = INDONESIAN_MONTHS.indexOf(effectiveStartMonthName);
+  if (startMonthIdx >= 0) {
+    const startAbsolute = effectiveStartYear * 12 + startMonthIdx;
+    // Saring hanya bulan yang sama dengan atau setelah titik awal kewajiban SPP
+    return fullMonths.filter(m => {
+      const mAbs = m.year * 12 + m.calendarMonthIndex;
+      return mAbs >= startAbsolute;
+    });
+  }
+
+  return fullMonths;
 }
 
 /**
@@ -221,21 +253,25 @@ export function calculateStudentSppStatus(
   defaultStartMonth?: string,
   defaultStartYear?: number
 ): StudentSppSummary {
-  const startYear = getAcademicStartYear(settingTahunAjaran, referenceDate);
-  const academicYear = settingTahunAjaran || `${startYear}/${startYear + 1}`;
-  const academicMonths = getAcademicYearMonths(settingTahunAjaran, referenceDate);
+  const currentSetting = StorageService.getSetting();
+  const effTahunAjaran = settingTahunAjaran || currentSetting.tahun_ajaran;
+  const startYear = getAcademicStartYear(effTahunAjaran, referenceDate);
+  const academicYear = effTahunAjaran || `${startYear}/${startYear + 1}`;
 
-  const curCalYear = referenceDate.getFullYear();
-  const curCalMonth = referenceDate.getMonth();
-  const curAbsolute = curCalYear * 12 + curCalMonth;
-
-  // Titik awal kewajiban SPP: prioritas per-murid (murid pindahan), lalu pengaturan semester/sekolah, lalu awal tahun ajaran (Juli)
-  const effectiveStartMonthName = student.spp_mulai_bulan || defaultStartMonth || 'Juli';
-  const effectiveStartYear = student.spp_mulai_tahun || defaultStartYear || startYear;
+  // Titik awal kewajiban SPP: prioritas per-murid (murid pindahan), lalu parameter defaultStartMonth, lalu setting StorageService, lalu 'Juli'
+  const effectiveStartMonthName = student.spp_mulai_bulan || defaultStartMonth || currentSetting.spp_mulai_bulan || 'Juli';
+  const effectiveStartYear = student.spp_mulai_tahun || defaultStartYear || currentSetting.spp_mulai_tahun || startYear;
 
   const startMonthIdx = INDONESIAN_MONTHS.indexOf(effectiveStartMonthName);
   const startCalIdx = startMonthIdx >= 0 ? startMonthIdx : 6; // Default to Juli (idx 6)
   const startAbsolute = effectiveStartYear * 12 + startCalIdx;
+
+  // Saring daftar bulan akademik hanya mulai dari titik awal kewajiban SPP ke depan
+  const academicMonths = getAcademicYearMonths(effTahunAjaran, referenceDate, effectiveStartMonthName, effectiveStartYear);
+
+  const curCalYear = referenceDate.getFullYear();
+  const curCalMonth = referenceDate.getMonth();
+  const curAbsolute = curCalYear * 12 + curCalMonth;
 
   // Filter transactions for this student (supports matching by NISN or fallback NIK)
   const studentTransactions = (transactions || []).filter(
@@ -264,7 +300,7 @@ export function calculateStudentSppStatus(
       dibayar = matchingTrxs.reduce((sum, t) => sum + (t.nominal_bayar || 0), 0);
       const hasLunas = matchingTrxs.some(t => t.status === 'LUNAS');
 
-      // PERBAIKAN REQ 1: Status LUNAS SELALU diberikan jika ada transaksi LUNAS
+      // Status LUNAS SELALU diberikan jika ada transaksi LUNAS
       // atau total bayar mencukupi nominal SPP, terlepas dari apakah bulan tersebut sudah jatuh tempo atau belum.
       if (hasLunas || dibayar >= monthlyFee) {
         status = 'LUNAS';
@@ -301,7 +337,7 @@ export function calculateStudentSppStatus(
   });
 
   const dueMonths = allMonths.filter(m => m.isDue);
-  // PERBAIKAN REQ 1: paidMonths mencakup SEMUA bulan yang lunas (termasuk yang dibayar di muka)
+  // paidMonths mencakup SEMUA bulan yang lunas (termasuk yang dibayar di muka)
   const paidMonths = allMonths.filter(m => m.status === 'LUNAS');
   // Hanya bulan yang sudah jatuh tempo dan belum lunas yang dihitung sebagai tunggakan
   const unpaidDueMonths = allMonths.filter(m => m.isDue && m.status !== 'LUNAS');
@@ -318,10 +354,13 @@ export function calculateStudentSppStatus(
   const monthsNunggakList = unpaidDueMonths.map(m => m.monthName);
   const monthsNunggakFullLabels = unpaidDueMonths.map(m => m.label);
 
-  // Non-SPP transactions for this student
-  const nonSppTrxs = studentTransactions.filter(
-    t => !academicMonths.some(m => matchesMonth(t, m))
-  );
+  // Non-SPP transactions for this student (pastikan transaksi SPP tidak terhitung ke pos non-SPP)
+  const isSppTrx = (t: Transaction) =>
+    t.kategori === 'SPP' ||
+    (t.jenis || '').toLowerCase().includes('spp') ||
+    Boolean(t.bulan);
+
+  const nonSppTrxs = studentTransactions.filter(t => !isSppTrx(t));
   const nonSppTagihan = nonSppTrxs.reduce((sum, t) => sum + (t.nominal_tagihan || 0), 0);
   const nonSppDibayar = nonSppTrxs.reduce((sum, t) => sum + (t.nominal_bayar || 0), 0);
   const nonSppSisa = nonSppTrxs.filter(t => t.status === 'KURANG').reduce((sum, t) => sum + (t.sisa || 0), 0);
@@ -384,10 +423,14 @@ export function calculateAllStudentsSppSummary(
   defaultStartMonth?: string,
   defaultStartYear?: number
 ) {
+  const currentSetting = StorageService.getSetting();
+  const effStartMonth = defaultStartMonth || currentSetting.spp_mulai_bulan || 'Juli';
+  const effStartYear = defaultStartYear || currentSetting.spp_mulai_tahun || 2026;
+
   const activeStudents = (students || []).filter(s => s.status_aktif);
 
   const summaries = activeStudents.map(st =>
-    calculateStudentSppStatus(st, transactions, settingTahunAjaran, referenceDate, defaultStartMonth, defaultStartYear)
+    calculateStudentSppStatus(st, transactions, settingTahunAjaran, referenceDate, effStartMonth, effStartYear)
   );
 
   const studentsWithTunggakan = summaries.filter(s => s.grandTotalSisa > 0);
@@ -412,22 +455,38 @@ export function calculateAllStudentsSppSummary(
 /**
  * Format real-time timestamp seragam di seluruh dashboard (tanggal & jam:menit:detik WIB)
  */
-export function formatTransactionTimestamp(tanggal: string = '', waktu?: string): {
+export function formatTransactionTimestamp(
+  tanggalOrTrx: string | { tanggal?: string; waktu?: string } = '',
+  waktu?: string
+): {
   dateDisplay: string;
   timeDisplay: string;
   fullDisplay: string;
 } {
-  let datePart = String(tanggal || '').trim();
-  let timePart = String(waktu || '').trim();
+  let datePart = '';
+  let timePart = '';
+
+  if (typeof tanggalOrTrx === 'object' && tanggalOrTrx !== null) {
+    datePart = String(tanggalOrTrx.tanggal || '').trim();
+    timePart = String(tanggalOrTrx.waktu || waktu || '').trim();
+  } else {
+    datePart = String(tanggalOrTrx || '').trim();
+    timePart = String(waktu || '').trim();
+  }
 
   // Handle jika tanggal mengandung waktu ISO atau spasi e.g. "2026-09-12 14:30:00"
-  if (datePart.includes('T') || (datePart.includes(' ') && !timePart)) {
+  if (datePart.includes('T') || datePart.includes(' ')) {
     const separator = datePart.includes('T') ? 'T' : ' ';
     const parts = datePart.split(separator);
     datePart = parts[0];
-    if (parts[1]) {
+    if (!timePart && parts[1]) {
       timePart = parts[1].replace('Z', '').split('.')[0];
     }
+  }
+
+  // Jika waktu adalah "00:00:00" atau "00:00" (tengah malam legacy), abaikan agar tidak menampilkan waktu palsu
+  if (timePart === '00:00:00' || timePart === '00:00') {
+    timePart = '';
   }
 
   // Jika timePart format HH:mm, lengkapi detik agar seragam

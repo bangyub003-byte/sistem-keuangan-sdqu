@@ -358,7 +358,14 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
 
         {/* 3. REKAP TUNGGAKAN */}
         {mode === 'REKAP_TUNGGAKAN' && (() => {
-          const sppSummaryAll = calculateAllStudentsSppSummary(safeStudents, safeTransactions, setting.tahun_ajaran);
+          const sppSummaryAll = calculateAllStudentsSppSummary(
+            safeStudents,
+            safeTransactions,
+            setting.tahun_ajaran,
+            new Date(),
+            setting.spp_mulai_bulan,
+            setting.spp_mulai_tahun
+          );
           const listTunggakan = sppSummaryAll.studentsWithTunggakan;
 
           return (
@@ -563,7 +570,14 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
               </thead>
               <tbody>
                 {(() => {
-                  const sppStatus = calculateStudentSppStatus(student, safeTransactions, setting.tahun_ajaran);
+                  const sppStatus = calculateStudentSppStatus(
+                    student,
+                    safeTransactions,
+                    setting.tahun_ajaran,
+                    new Date(),
+                    setting.spp_mulai_bulan,
+                    setting.spp_mulai_tahun
+                  );
                   return sppStatus.allMonths.map((m, i) => {
                     const match = m.transactions[0];
                     return (

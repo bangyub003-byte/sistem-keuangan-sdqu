@@ -509,11 +509,12 @@ export class StorageService {
     const pad = (n: number) => n.toString().padStart(2, '0');
     const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
     const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    const fullTimestamp = `${dateStr} ${timeStr}`;
     
     const sisa = Math.max(0, data.nominal_tagihan - data.nominal_bayar);
     const newTrx: Transaction = {
       id_transaksi: `TRX-${now.getFullYear()}-${Date.now().toString().slice(-6)}`,
-      tanggal: dateStr,
+      tanggal: fullTimestamp,
       waktu: timeStr,
       nisn: data.nisn,
       nama_siswa: data.nama_siswa,
@@ -536,7 +537,7 @@ export class StorageService {
     const keuangan = this.getKeuangan();
     const newKeuangan: KeuanganRecord = {
       id_keuangan: `KUG-${Date.now()}`,
-      tanggal: dateStr,
+      tanggal: fullTimestamp,
       waktu: timeStr,
       jenis: 'MASUK',
       kategori: data.kategori || 'SPP',
@@ -642,10 +643,17 @@ export class StorageService {
     const now = new Date();
     const pad = (n: number) => n.toString().padStart(2, '0');
     const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+    let fullDate = record.tanggal || dateStr;
+    if (fullDate.length === 10) {
+      fullDate = `${fullDate} ${record.waktu || timeStr}`;
+    }
 
     const newRec: KeuanganRecord = {
       ...record,
       id_keuangan: `KUG-${Date.now()}`,
+      tanggal: fullDate,
       waktu: record.waktu || timeStr,
       petugas: operator || record.petugas || 'Bendahara',
       status: record.status || 'ACTIVE',
@@ -858,6 +866,58 @@ export class StorageService {
   }
 
   /**
+   * Update Nomor WhatsApp Wali Murid Langsung (Self-Service Wali)
+   * Menyimpan ke kolom no_hp murid di sheet SISWA dan sinkron ke Bendahara
+   */
+  static async updateWaliContact(
+    identifier: { nisn?: string; id_siswa?: string; nik?: string },
+    no_hp: string,
+    operator: string = 'Wali Murid'
+  ): Promise<{
+    student?: Student;
+    gasResult?: any;
+  }> {
+    const cleanNisn = (identifier.nisn || '').trim();
+    const cleanId = (identifier.id_siswa || '').trim();
+    const cleanNik = (identifier.nik || '').trim();
+    const students = this.getStudents();
+    let updatedStudent: Student | undefined;
+
+    const updated = students.map(s => {
+      if (
+        (cleanId && s.id_siswa === cleanId) ||
+        (cleanNisn && s.nisn === cleanNisn) ||
+        (cleanNik && s.nik === cleanNik)
+      ) {
+        updatedStudent = { ...s, no_hp };
+        return updatedStudent;
+      }
+      return s;
+    });
+
+    if (updatedStudent) {
+      this.saveStudents(updated);
+      this.addLog(operator, `Wali murid ${updatedStudent.nama} memperbarui kontak WhatsApp: ${no_hp}`);
+    }
+
+    const setting = this.getSetting();
+    let gasResult: any = null;
+    if (setting.gas_url) {
+      gasResult = await this.callGasApi(setting.gas_url, 'UPDATE_WALI_CONTACT', {
+        nisn: updatedStudent?.nisn || cleanNisn,
+        id_siswa: updatedStudent?.id_siswa || cleanId,
+        nik: updatedStudent?.nik || cleanNik,
+        nama_wali: updatedStudent?.nama_wali,
+        no_hp,
+        petugas: operator
+      });
+    }
+
+    return { student: updatedStudent, gasResult };
+  }
+
+
+  /**
    * Tarik Data Lengkap Langsung dari Google Spreadsheet (7 Sheet)
    * Menyegarkan cache lokal dan mengembalikan data terbaru ke React state
    */
@@ -935,7 +995,9 @@ export class StorageService {
           nama_bank: String(rawSetting.nama_bank || rawSetting.bank || cur.nama_bank || ''),
           no_rekening: String(rawSetting.no_rekening || rawSetting.rekening || rawSetting.norek || cur.no_rekening || ''),
           atas_nama_rekening: String(rawSetting.atas_nama_rekening || rawSetting.atas_nama || cur.atas_nama_rekening || ''),
-          qris_image: formatDriveUrl(rawSetting.qris_image || rawSetting.qris || cur.qris_image || '')
+          qris_image: formatDriveUrl(rawSetting.qris_image || rawSetting.qris || cur.qris_image || ''),
+          spp_mulai_bulan: rawSetting.spp_mulai_bulan ? String(rawSetting.spp_mulai_bulan) : cur.spp_mulai_bulan,
+          spp_mulai_tahun: rawSetting.spp_mulai_tahun ? Number(rawSetting.spp_mulai_tahun) : cur.spp_mulai_tahun
         };
         localStorage.setItem(STORAGE_KEYS.SETTING, JSON.stringify(parsedSetting));
       }
@@ -959,7 +1021,9 @@ export class StorageService {
         status_aktif: s.status_aktif !== false && s.status_aktif !== 'false' && s.status_aktif !== 0,
         spp_nominal: (Number(s.spp_nominal) && Number(s.spp_nominal) > 0) ? Number(s.spp_nominal) : activeDefaultSpp,
         spp_kategori: String(s.spp_kategori || 'REGULER'),
-        spp_catatan: String(s.spp_catatan || '')
+        spp_catatan: String(s.spp_catatan || ''),
+        spp_mulai_bulan: s.spp_mulai_bulan ? String(s.spp_mulai_bulan) : undefined,
+        spp_mulai_tahun: s.spp_mulai_tahun ? Number(s.spp_mulai_tahun) : undefined
       })) : [];
 
       // Parse Transaksi
@@ -974,6 +1038,9 @@ export class StorageService {
           if (!timeVal && parts[1]) {
             timeVal = parts[1].replace('Z', '').split('.')[0];
           }
+        }
+        if (timeVal === '00:00:00' || timeVal === '00:00') {
+          timeVal = undefined;
         }
         return {
           id_transaksi: String(t.id_transaksi || `TRX-${Date.now()}`),
@@ -1007,6 +1074,9 @@ export class StorageService {
           if (!timeVal && parts[1]) {
             timeVal = parts[1].replace('Z', '').split('.')[0];
           }
+        }
+        if (timeVal === '00:00:00' || timeVal === '00:00') {
+          timeVal = undefined;
         }
         return {
           id_keuangan: String(k.id_keuangan || `KAS-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`),

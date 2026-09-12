@@ -10,8 +10,8 @@ export const INITIAL_SETTING: SchoolSetting = {
   tahun_ajaran: "2026/2027",
   nama_kepsek: "Ust. H. Ahmad Mufid, M.Pd.",
   nama_bendahara: "Usth. Nur Khasanah, S.E.I.",
-  spp_default_nominal: 500000,
-  spp_mulai_bulan: "Juli",
+  spp_default_nominal: 85000,
+  spp_mulai_bulan: "September",
   spp_mulai_tahun: 2026,
   gas_url: APP_CONFIG.DEFAULT_GAS_URL,
   drive_folder_id: APP_CONFIG.DEFAULT_DRIVE_FOLDER_ID,
@@ -91,7 +91,7 @@ export const INITIAL_STUDENTS: Student[] = [
     alamat: "RT 03 / RW 01, Playen I, Playen, Gunungkidul",
     foto: "https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80",
     status_aktif: true,
-    spp_nominal: 500000,
+    spp_nominal: 85000,
     spp_kategori: "REGULER",
     spp_catatan: "SPP Reguler Standar Sekolah"
   },
@@ -127,7 +127,7 @@ export const INITIAL_STUDENTS: Student[] = [
     alamat: "Paliyan Tengah, Paliyan, Gunungkidul",
     foto: "https://images.unsplash.com/photo-1519456264917-42d0aa2e0625?w=150&auto=format&fit=crop&q=80",
     status_aktif: true,
-    spp_nominal: 500000,
+    spp_nominal: 85000,
     spp_kategori: "REGULER",
     spp_catatan: "SPP Reguler"
   },
@@ -163,7 +163,7 @@ export const INITIAL_STUDENTS: Student[] = [
     alamat: "Gading, Playen, Gunungkidul",
     foto: "https://images.unsplash.com/photo-1485290334039-a3c69043e517?w=150&auto=format&fit=crop&q=80",
     status_aktif: true,
-    spp_nominal: 500000,
+    spp_nominal: 85000,
     spp_kategori: "REGULER",
     spp_catatan: "SPP Reguler"
   },
@@ -181,7 +181,7 @@ export const INITIAL_STUDENTS: Student[] = [
     alamat: "Nglipar, Gunungkidul",
     foto: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
     status_aktif: true,
-    spp_nominal: 500000,
+    spp_nominal: 85000,
     spp_kategori: "REGULER",
     spp_catatan: "SPP Reguler"
   }

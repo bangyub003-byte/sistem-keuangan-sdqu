@@ -30,8 +30,15 @@ export const DashboardMenu: React.FC<DashboardMenuProps> = ({
 
   // Dynamic SPP Calculation following the current month
   const sppAllSummary = useMemo(() => {
-    return calculateAllStudentsSppSummary(students, transactions, setting.tahun_ajaran);
-  }, [students, transactions, setting.tahun_ajaran]);
+    return calculateAllStudentsSppSummary(
+      students,
+      transactions,
+      setting.tahun_ajaran,
+      new Date(),
+      setting.spp_mulai_bulan,
+      setting.spp_mulai_tahun
+    );
+  }, [students, transactions, setting.tahun_ajaran, setting.spp_mulai_bulan, setting.spp_mulai_tahun]);
 
   // Jumlah Tunggakan (akumulasi santri sampai bulan berjalan)
   const totalTunggakan = sppAllSummary.totalTunggakanAll;

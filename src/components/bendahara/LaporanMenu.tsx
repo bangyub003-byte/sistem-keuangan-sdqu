@@ -27,8 +27,15 @@ export const LaporanMenu: React.FC<LaporanMenuProps> = ({
     .reduce((a, b) => a + (b.nominal_bayar || 0), 0);
 
   const sppAllSummary = useMemo(() => {
-    return calculateAllStudentsSppSummary(students, transactions, setting.tahun_ajaran);
-  }, [students, transactions, setting.tahun_ajaran]);
+    return calculateAllStudentsSppSummary(
+      students,
+      transactions,
+      setting.tahun_ajaran,
+      new Date(),
+      setting.spp_mulai_bulan,
+      setting.spp_mulai_tahun
+    );
+  }, [students, transactions, setting.tahun_ajaran, setting.spp_mulai_bulan, setting.spp_mulai_tahun]);
 
   const totalTunggakan = sppAllSummary.totalTunggakanAll;
   const countSantriNunggak = sppAllSummary.countSantriNunggak;

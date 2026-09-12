@@ -292,6 +292,25 @@ export default function App() {
     }
   };
 
+  const handleUpdateWaliContact = async (no_hp: string) => {
+    if (!currentWaliStudent) return;
+    setSyncStatus('syncing');
+    setSyncError(null);
+    const res = await StorageService.updateWaliContact(
+      { nisn: currentWaliStudent.nisn, id_siswa: currentWaliStudent.id_siswa, nik: currentWaliStudent.nik },
+      no_hp,
+      currentUser?.nama || 'Wali Murid'
+    );
+    setStudents(StorageService.getStudents());
+    if (res.gasResult && res.gasResult.status === 'error') {
+      setSyncStatus('error');
+      setSyncError(res.gasResult.message);
+    } else {
+      setSyncStatus('synced');
+      if (res.gasResult?.version) setDataVersion(res.gasResult.version);
+    }
+  };
+
   const handleDeleteStudent = async (id_siswa: string) => {
     setSyncStatus('syncing');
     setSyncError(null);
@@ -666,6 +685,7 @@ export default function App() {
                   announcements={announcements}
                   onOpenReceipt={handleOpenReceipt}
                   onOpenKartuSpp={handleOpenKartuSpp}
+                  onUpdateWaliContact={handleUpdateWaliContact}
                 />
               ) : (
                 <div className="bg-white rounded-2xl p-8 border border-slate-200 text-center max-w-lg mx-auto shadow-xs space-y-4 my-8">

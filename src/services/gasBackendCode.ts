@@ -92,10 +92,10 @@ function perbaikiSemuaHeader() {
   var ss = getSpreadsheet();
   var requiredSheets = {
     "USER": ["id_user", "username", "password", "nama", "role", "id_siswa", "nisn"],
-    "SISWA": ["id_siswa", "nisn", "nik", "nama", "tempat_lahir", "tanggal_lahir", "jenis_kelamin", "kelas", "nama_wali", "no_hp", "alamat", "foto", "spp_nominal", "spp_kategori", "spp_catatan", "status_aktif"],
-    "TRANSAKSI": ["id_transaksi", "tanggal", "nisn", "nama_siswa", "kelas", "jenis", "kategori", "bulan", "nominal_tagihan", "nominal_bayar", "sisa", "status", "petugas", "keterangan", "alasan_batal"],
-    "KEUANGAN": ["id_keuangan", "tanggal", "jenis", "kategori", "nominal", "keterangan", "bukti", "petugas", "status", "alasan_batal", "id_kategori"],
-    "SETTING": ["nama_sekolah", "logo", "alamat", "no_wa", "kop_surat", "tahun_ajaran", "nama_kepsek", "nama_bendahara", "spp_default_nominal", "nama_bank", "no_rekening", "atas_nama_rekening", "qris_image"],
+    "SISWA": ["id_siswa", "nisn", "nik", "nama", "tempat_lahir", "tanggal_lahir", "jenis_kelamin", "kelas", "nama_wali", "no_hp", "alamat", "foto", "spp_nominal", "spp_kategori", "spp_catatan", "status_aktif", "spp_mulai_bulan", "spp_mulai_tahun"],
+    "TRANSAKSI": ["id_transaksi", "tanggal", "nisn", "nama_siswa", "kelas", "jenis", "kategori", "bulan", "nominal_tagihan", "nominal_bayar", "sisa", "status", "petugas", "keterangan", "alasan_batal", "waktu"],
+    "KEUANGAN": ["id_keuangan", "tanggal", "jenis", "kategori", "nominal", "keterangan", "bukti", "petugas", "status", "alasan_batal", "id_kategori", "waktu"],
+    "SETTING": ["nama_sekolah", "logo", "alamat", "no_wa", "kop_surat", "tahun_ajaran", "nama_kepsek", "nama_bendahara", "spp_default_nominal", "nama_bank", "no_rekening", "atas_nama_rekening", "qris_image", "spp_mulai_bulan", "spp_mulai_tahun"],
     "PENGUMUMAN": ["id_pengumuman", "tanggal", "judul", "isi", "penulis", "is_penting", "status_aktif"],
     "KATEGORI_DANA": ["id_kategori", "nama_kategori", "keterangan", "status_aktif"],
     "LOG": ["tanggal", "user", "aktivitas"]
@@ -275,6 +275,10 @@ function doPost(e) {
         response = handleUpdateStudent(ss, payload);
         break;
 
+      case "UPDATE_WALI_CONTACT":
+        response = handleUpdateWaliContact(ss, payload);
+        break;
+
       case "DELETE_STUDENT":
         response = handleDeleteStudent(ss, payload);
         break;
@@ -369,10 +373,10 @@ function doPost(e) {
 function checkAndInitSheets(ss) {
   var requiredSheets = {
     "USER": ["id_user", "username", "password", "nama", "role", "id_siswa", "nisn"],
-    "SISWA": ["id_siswa", "nisn", "nik", "nama", "tempat_lahir", "tanggal_lahir", "jenis_kelamin", "kelas", "nama_wali", "no_hp", "alamat", "foto", "spp_nominal", "spp_kategori", "spp_catatan", "status_aktif"],
-    "TRANSAKSI": ["id_transaksi", "tanggal", "nisn", "nama_siswa", "kelas", "jenis", "kategori", "bulan", "nominal_tagihan", "nominal_bayar", "sisa", "status", "petugas", "keterangan", "alasan_batal"],
-    "KEUANGAN": ["id_keuangan", "tanggal", "jenis", "kategori", "nominal", "keterangan", "bukti", "petugas", "status", "alasan_batal", "id_kategori"],
-    "SETTING": ["nama_sekolah", "logo", "alamat", "no_wa", "kop_surat", "tahun_ajaran", "nama_kepsek", "nama_bendahara", "spp_default_nominal", "nama_bank", "no_rekening", "atas_nama_rekening", "qris_image"],
+    "SISWA": ["id_siswa", "nisn", "nik", "nama", "tempat_lahir", "tanggal_lahir", "jenis_kelamin", "kelas", "nama_wali", "no_hp", "alamat", "foto", "spp_nominal", "spp_kategori", "spp_catatan", "status_aktif", "spp_mulai_bulan", "spp_mulai_tahun"],
+    "TRANSAKSI": ["id_transaksi", "tanggal", "nisn", "nama_siswa", "kelas", "jenis", "kategori", "bulan", "nominal_tagihan", "nominal_bayar", "sisa", "status", "petugas", "keterangan", "alasan_batal", "waktu"],
+    "KEUANGAN": ["id_keuangan", "tanggal", "jenis", "kategori", "nominal", "keterangan", "bukti", "petugas", "status", "alasan_batal", "id_kategori", "waktu"],
+    "SETTING": ["nama_sekolah", "logo", "alamat", "no_wa", "kop_surat", "tahun_ajaran", "nama_kepsek", "nama_bendahara", "spp_default_nominal", "nama_bank", "no_rekening", "atas_nama_rekening", "qris_image", "spp_mulai_bulan", "spp_mulai_tahun"],
     "PENGUMUMAN": ["id_pengumuman", "tanggal", "judul", "isi", "penulis", "is_penting", "status_aktif"],
     "KATEGORI_DANA": ["id_kategori", "nama_kategori", "keterangan", "status_aktif"],
     "LOG": ["tanggal", "user", "aktivitas"]
@@ -561,10 +565,12 @@ function handleAddStudent(ss, student) {
     student.no_hp || "",
     student.alamat || "",
     student.foto || "",
-    sppNominal,
+    student.spp_nominal ? sppNominal : getSettingDefaultSpp(ss),
     student.spp_kategori || "REGULER",
     student.spp_catatan || "",
-    student.status_aktif !== false
+    student.status_aktif !== false,
+    student.spp_mulai_bulan || "",
+    student.spp_mulai_tahun || ""
   ]);
 
   // Otomatis buat akun wali di sheet USER jika belum ada (gunakan NISN, fallback ke NIK)
@@ -618,6 +624,8 @@ function handleUpdateStudent(ss, student) {
       sheet.getRange(rowIdx, 14).setValue(student.spp_kategori || "REGULER");
       sheet.getRange(rowIdx, 15).setValue(student.spp_catatan || "");
       if (student.status_aktif !== undefined) sheet.getRange(rowIdx, 16).setValue(student.status_aktif);
+      if (student.spp_mulai_bulan !== undefined) sheet.getRange(rowIdx, 17).setValue(student.spp_mulai_bulan || "");
+      if (student.spp_mulai_tahun !== undefined) sheet.getRange(rowIdx, 18).setValue(student.spp_mulai_tahun || "");
 
       appendLog(ss, student.petugas || "Bendahara", "Memperbarui data murid: " + student.nama);
       bumpVersion();
@@ -738,8 +746,16 @@ function handleBulkImportStudents(ss, payload) {
  */
 function handleProcessPayment(ss, trx) {
   var sheet = ss.getSheetByName("TRANSAKSI");
-  var newTrxId = trx.id_transaksi || ("TRX-" + Utilities.formatDate(new Date(), "GMT+7", "yyyyMMddHHmmss"));
-  var dateStr = trx.tanggal || Utilities.formatDate(new Date(), "GMT+7", "yyyy-MM-dd");
+  var now = new Date();
+  var newTrxId = trx.id_transaksi || ("TRX-" + Utilities.formatDate(now, "GMT+7", "yyyyMMddHHmmss"));
+  var defaultTimestamp = Utilities.formatDate(now, "GMT+7", "yyyy-MM-dd HH:mm:ss");
+  var defaultTime = Utilities.formatDate(now, "GMT+7", "HH:mm:ss");
+
+  var dateStr = trx.tanggal || defaultTimestamp;
+  if (dateStr.length === 10) {
+    dateStr = dateStr + " " + (trx.waktu || defaultTime);
+  }
+  var timeStr = trx.waktu || (dateStr.length > 10 ? dateStr.substring(11).trim() : defaultTime);
 
   sheet.appendRow([
     newTrxId,
@@ -756,14 +772,15 @@ function handleProcessPayment(ss, trx) {
     trx.status || "LUNAS",
     trx.petugas || "Bendahara",
     trx.keterangan || "",
-    ""
+    "",
+    timeStr
   ]);
 
   // Otomatis catat juga ke Sheet KEUANGAN sebagai kas masuk jika nominal_bayar > 0
   if (Number(trx.nominal_bayar) > 0) {
     var kSheet = ss.getSheetByName("KEUANGAN");
     if (kSheet) {
-      var kId = "KUG-" + Utilities.formatDate(new Date(), "GMT+7", "yyyyMMddHHmmss");
+      var kId = "KUG-" + Utilities.formatDate(now, "GMT+7", "yyyyMMddHHmmss");
       var ket = (trx.jenis || "SPP") + " " + (trx.bulan || "") + " a.n " + (trx.nama_siswa || trx.nisn) + " (" + (trx.kelas || "") + ")";
       kSheet.appendRow([
         kId,
@@ -776,7 +793,8 @@ function handleProcessPayment(ss, trx) {
         trx.petugas || "Bendahara",
         "ACTIVE",
         "",
-        "KAT-SPP"
+        "KAT-SPP",
+        timeStr
       ]);
     }
   }
@@ -849,8 +867,16 @@ function handleVerifyTransaction(ss, payload) {
  */
 function handleAddKeuangan(ss, k) {
   var sheet = ss.getSheetByName("KEUANGAN");
-  var newId = k.id_keuangan || ("KUG-" + Utilities.formatDate(new Date(), "GMT+7", "yyyyMMddHHmmss"));
-  var dateStr = k.tanggal || Utilities.formatDate(new Date(), "GMT+7", "yyyy-MM-dd");
+  var now = new Date();
+  var newId = k.id_keuangan || ("KUG-" + Utilities.formatDate(now, "GMT+7", "yyyyMMddHHmmss"));
+  var defaultTimestamp = Utilities.formatDate(now, "GMT+7", "yyyy-MM-dd HH:mm:ss");
+  var defaultTime = Utilities.formatDate(now, "GMT+7", "HH:mm:ss");
+
+  var dateStr = k.tanggal || defaultTimestamp;
+  if (dateStr.length === 10) {
+    dateStr = dateStr + " " + (k.waktu || defaultTime);
+  }
+  var timeStr = k.waktu || (dateStr.length > 10 ? dateStr.substring(11).trim() : defaultTime);
 
   sheet.appendRow([
     newId,
@@ -863,7 +889,8 @@ function handleAddKeuangan(ss, k) {
     k.petugas || "Bendahara",
     k.status || "ACTIVE",
     k.alasan_batal || "",
-    k.id_kategori || ""
+    k.id_kategori || "",
+    timeStr
   ]);
 
   appendLog(ss, k.petugas || "Bendahara", "Input Kas " + k.jenis + " [" + k.kategori + "] Rp" + k.nominal + " - " + k.keterangan);
@@ -945,7 +972,7 @@ function handleUpdateSetting(ss, s) {
   }
   if (!sheet) return { status: "error", message: "Sheet SETTING tidak ditemukan" };
 
-  var headers = ["nama_sekolah", "logo", "alamat", "no_wa", "kop_surat", "tahun_ajaran", "nama_kepsek", "nama_bendahara", "spp_default_nominal", "nama_bank", "no_rekening", "atas_nama_rekening", "qris_image"];
+  var headers = ["nama_sekolah", "logo", "alamat", "no_wa", "kop_surat", "tahun_ajaran", "nama_kepsek", "nama_bendahara", "spp_default_nominal", "nama_bank", "no_rekening", "atas_nama_rekening", "qris_image", "spp_mulai_bulan", "spp_mulai_tahun"];
 
   var rowData = [
     s.nama_sekolah || "",
@@ -956,11 +983,13 @@ function handleUpdateSetting(ss, s) {
     s.tahun_ajaran || "",
     s.nama_kepsek || "",
     s.nama_bendahara || "",
-    Number(s.spp_default_nominal) || 500000,
+    Number(s.spp_default_nominal) || getSettingDefaultSpp(ss),
     s.nama_bank || "",
     s.no_rekening || "",
     s.atas_nama_rekening || "",
-    s.qris_image || ""
+    s.qris_image || "",
+    s.spp_mulai_bulan || "",
+    s.spp_mulai_tahun || ""
   ];
 
   if (sheet.getLastRow() >= 2) {
@@ -972,6 +1001,37 @@ function handleUpdateSetting(ss, s) {
   appendLog(ss, s.nama_bendahara || "Bendahara", "Memperbarui Profil Sekolah / Nama Kepala Sekolah: " + (s.nama_kepsek || ""));
   bumpVersion();
   return { status: "success", message: "Pengaturan profil sekolah berhasil diperbarui di Spreadsheet!" };
+}
+
+function handleUpdateWaliContact(ss, payload) {
+  var sheet = ss.getSheetByName("SISWA");
+  if (!sheet) return { status: "error", message: "Sheet SISWA tidak ditemukan" };
+  var data = sheet.getDataRange().getValues();
+  var targetNisn = String(payload.nisn || "").trim();
+  var targetId = String(payload.id_siswa || "").trim();
+  var targetNik = String(payload.nik || "").trim();
+  var newPhone = String(payload.no_hp || "").trim();
+
+  for (var i = 1; i < data.length; i++) {
+    var rowId = String(data[i][0]).trim();
+    var rowNisn = String(data[i][1]).trim();
+    var rowNik = String(data[i][2]).trim();
+
+    if ((targetNisn && rowNisn === targetNisn) || (targetId && rowId === targetId) || (targetNik && rowNik === targetNik)) {
+      var rowIdx = i + 1;
+      sheet.getRange(rowIdx, 10).setValue(newPhone); // Kolom 10: no_hp
+
+      var studentName = data[i][3] || targetNisn;
+      appendLog(ss, payload.petugas || "Wali Murid", "Wali memperbarui nomor WhatsApp murid " + studentName + ": " + newPhone);
+      bumpVersion();
+      return {
+        status: "success",
+        message: "Nomor WhatsApp Wali berhasil diperbarui dan tersimpan di Spreadsheet!",
+        no_hp: newPhone
+      };
+    }
+  }
+  return { status: "error", message: "Data murid tidak ditemukan di Sheet SISWA" };
 }
 
 /**
