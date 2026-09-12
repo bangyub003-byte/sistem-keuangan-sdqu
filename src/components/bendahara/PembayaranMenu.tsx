@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Student, Transaction, SchoolSetting } from '../../types';
 import { Search, CreditCard, Printer, CheckCircle, AlertCircle, XCircle, User, Calendar, Award, RotateCcw, FileText, Check, ShieldAlert, Plus, PenTool, MessageCircle, Phone } from 'lucide-react';
 import { createPaymentConfirmationWaUrl, createTunggakanReminderWaUrl } from '../../utils/whatsappHelper';
+import { calculateStudentSppStatus, getStandardTransactionTitle, getAcademicYearMonths } from '../../utils/sppLogic';
 
 interface PembayaranMenuProps {
   students: Student[];
@@ -129,20 +130,34 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
       setCustomPaymentTypes(prev => [...prev, manualPaymentInput.trim()]);
     }
 
-    const isSppType = finalPaymentType.toLowerCase().includes('spp');
+    const isSppType = finalPaymentType.toLowerCase().includes('spp') || Boolean(selectedMonth);
+
+    // Validasi pencegahan input ganda untuk bulan yang sudah lunas
+    if (isSppType && checkMonthIsLunas(selectedMonth)) {
+      alert(`Bulan ${selectedMonth} sudah berstatus LUNAS untuk ananda ${selectedStudent.nama}. Pembayaran ganda tidak dapat dilakukan.`);
+      return;
+    }
+
+    const standardSppTitle = `SPP Bulan ${selectedMonth}`;
+    const finalJenisToSave = isSppType ? standardSppTitle : finalPaymentType;
+    const finalKeteranganToSave = keterangan.trim()
+      ? keterangan.trim()
+      : (isSppType
+          ? `${standardSppTitle} a.n ${selectedStudent.nama} (${selectedStudent.kelas})`
+          : `Pembayaran ${finalPaymentType} oleh ${selectedStudent.nama_wali}`);
 
     const createdTrx = onProcessPayment({
       nisn: selectedStudent.nisn,
       nama_siswa: selectedStudent.nama,
       kelas: selectedStudent.kelas,
-      jenis: finalPaymentType,
+      jenis: finalJenisToSave,
       kategori: isSppType ? 'SPP' : 'Uang Kegiatan',
       bulan: isSppType ? selectedMonth : undefined,
       nominal_tagihan: customTagihan,
       nominal_bayar: nominalBayar,
       status: statusMode,
       petugas: operatorName,
-      keterangan: keterangan || `Pembayaran ${finalPaymentType} oleh ${selectedStudent.nama_wali}`
+      keterangan: finalKeteranganToSave
     });
 
     // Auto open receipt for printing
@@ -225,11 +240,43 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
     return formattedPhone ? `https://wa.me/${formattedPhone}?text=${message}` : `https://wa.me/?text=${message}`;
   };
 
-  const monthsList = [
-    'Juli 2026', 'Agustus 2026', 'September 2026', 'Oktober 2026',
-    'November 2026', 'Desember 2026', 'Januari 2027', 'Februari 2027',
-    'Maret 2027', 'April 2027', 'Mei 2027', 'Juni 2027'
-  ];
+  const monthsList = useMemo(() => {
+    const academicMonths = getAcademicYearMonths(setting.tahun_ajaran);
+    return academicMonths.map(m => m.label);
+  }, [setting.tahun_ajaran]);
+
+  // SPP Summary & Status per Bulan untuk Murid Terpilih
+  const studentSppSummary = useMemo(() => {
+    if (!selectedStudent) return null;
+    return calculateStudentSppStatus(
+      selectedStudent,
+      transactions,
+      setting.tahun_ajaran,
+      new Date(),
+      setting.spp_mulai_bulan,
+      setting.spp_mulai_tahun
+    );
+  }, [selectedStudent, transactions, setting]);
+
+  const checkMonthIsLunas = (monthLabel: string) => {
+    if (!studentSppSummary) return false;
+    const clean = monthLabel.trim().toLowerCase();
+    const found = studentSppSummary.allMonths.find(
+      m => m.label.toLowerCase() === clean || m.monthName.toLowerCase() === clean.split(' ')[0]
+    );
+    return found ? found.status === 'LUNAS' : false;
+  };
+
+  // Otomatis arahkan selectedMonth ke bulan pertama yang belum lunas
+  useEffect(() => {
+    if (!studentSppSummary || monthsList.length === 0) return;
+    if (checkMonthIsLunas(selectedMonth)) {
+      const firstUnpaid = monthsList.find(m => !checkMonthIsLunas(m));
+      if (firstUnpaid) {
+        setSelectedMonth(firstUnpaid);
+      }
+    }
+  }, [selectedStudent?.nisn, transactions, monthsList]);
 
   const paymentTypeOptions = [
     'SPP Bulanan',
@@ -482,9 +529,19 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
                       onChange={(e) => setSelectedMonth(e.target.value)}
                       className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
                     >
-                      {monthsList.map(m => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
+                      {monthsList.map(m => {
+                        const isLunas = checkMonthIsLunas(m);
+                        return (
+                          <option
+                            key={m}
+                            value={m}
+                            disabled={isLunas}
+                            className={isLunas ? 'text-slate-400 bg-slate-100 italic' : 'text-slate-900 font-medium'}
+                          >
+                            {m} {isLunas ? '(Sudah Lunas)' : ''}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
                 )}
@@ -637,10 +694,13 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
                 studentTransactions.map(trx => (
                   <tr key={trx.id_transaksi} className={`hover:bg-slate-50 ${trx.status === 'CANCEL' ? 'bg-rose-50/50 opacity-80' : ''}`}>
                     <td className="p-3 font-mono font-medium text-slate-600">{trx.id_transaksi}</td>
-                    <td className="p-3 whitespace-nowrap text-slate-600">{trx.tanggal}</td>
+                    <td className="p-3 whitespace-nowrap text-slate-600">
+                      <div>{trx.tanggal}</div>
+                      {trx.waktu && <div className="text-[10px] text-slate-400 font-mono">{trx.waktu} WIB</div>}
+                    </td>
                     <td className="p-3">
-                      <div className="font-bold text-slate-900">{trx.jenis}</div>
-                      {trx.bulan && <div className="text-[10px] text-slate-500">{trx.bulan}</div>}
+                      <div className="font-bold text-slate-900">{getStandardTransactionTitle(trx)}</div>
+                      {trx.keterangan && <div className="text-[10px] text-slate-500">{trx.keterangan}</div>}
                       {trx.alasan_batal && (
                         <div className="text-[10px] text-rose-600 font-medium italic mt-0.5">
                           Alasan Batal: {trx.alasan_batal}

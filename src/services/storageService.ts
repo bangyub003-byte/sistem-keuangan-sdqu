@@ -886,6 +886,7 @@ export class StorageService {
       const parsedTransactions: Transaction[] = Array.isArray(data.transactions) ? data.transactions.filter((t: any) => t.id_transaksi || t.nisn).map((t: any) => ({
         id_transaksi: String(t.id_transaksi || `TRX-${Date.now()}`),
         tanggal: String(t.tanggal || new Date().toISOString().slice(0, 10)),
+        waktu: t.waktu ? String(t.waktu) : (t.jam ? String(t.jam) : undefined),
         nisn: String(t.nisn || ''),
         nama_siswa: String(t.nama_siswa || parsedStudents.find(s => s.nisn === String(t.nisn))?.nama || ''),
         kelas: String(t.kelas || parsedStudents.find(s => s.nisn === String(t.nisn))?.kelas || ''),

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Student, Transaction, SchoolSetting, UserAccount, Announcement } from '../../types';
 import { PrintMode } from '../PrintReportView';
-import { calculateStudentSppStatus } from '../../utils/sppLogic';
+import { calculateStudentSppStatus, getStandardTransactionTitle } from '../../utils/sppLogic';
 import { createPaymentConfirmationWaUrl } from '../../utils/whatsappHelper';
 import {
   GraduationCap,
@@ -378,31 +378,47 @@ export const WaliDashboard: React.FC<WaliDashboardProps> = ({
               <span className="text-[10px] text-slate-400 font-normal lowercase">update otomatis per bulan berjalan</span>
             </div>
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
-              {sppSummary.allMonths.map((m) => (
-                <div
-                  key={m.label}
-                  className={`p-2 rounded-lg border text-center transition-all ${
-                    m.status === 'LUNAS'
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                      : m.status === 'KURANG'
-                      ? 'bg-amber-50 border-amber-300 text-amber-900'
-                      : m.status === 'BELUM_BAYAR'
-                      ? 'bg-rose-50 border-rose-200 text-rose-800'
-                      : 'bg-white border-slate-200 text-slate-400'
-                  }`}
-                >
-                  <div className="text-[11px] font-bold truncate">{m.monthName}</div>
-                  <div className="text-[9px] font-medium mt-0.5">
-                    {m.status === 'LUNAS'
-                      ? 'LUNAS'
-                      : m.status === 'KURANG'
-                      ? `Kurang Rp${(m.sisa / 1000).toFixed(0)}rb`
-                      : m.status === 'BELUM_BAYAR'
-                      ? 'MENUNGGAK'
-                      : 'Belum Tempo'}
+              {sppSummary.allMonths.map((m) => {
+                const latestTrx = m.transactions && m.transactions.length > 0
+                  ? m.transactions[m.transactions.length - 1]
+                  : null;
+
+                return (
+                  <div
+                    key={m.label}
+                    className={`p-2 rounded-lg border text-center transition-all ${
+                      m.status === 'LUNAS'
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                        : m.status === 'KURANG'
+                        ? 'bg-amber-50 border-amber-300 text-amber-900'
+                        : m.status === 'BELUM_BAYAR'
+                        ? 'bg-rose-50 border-rose-200 text-rose-800'
+                        : 'bg-white border-slate-200 text-slate-400'
+                    }`}
+                  >
+                    <div className="text-[11px] font-bold truncate">{m.monthName}</div>
+                    <div className="text-[9px] font-medium mt-0.5">
+                      {m.status === 'LUNAS'
+                        ? 'LUNAS'
+                        : m.status === 'KURANG'
+                        ? `Kurang Rp${(m.sisa / 1000).toFixed(0)}rb`
+                        : m.status === 'BELUM_BAYAR'
+                        ? 'MENUNGGAK'
+                        : 'Belum Tempo'}
+                    </div>
+                    {m.status === 'LUNAS' && latestTrx && (
+                      <div className="text-[8.5px] font-medium text-emerald-700/90 mt-1 pt-1 border-t border-emerald-200/60 leading-tight">
+                        <div>{latestTrx.tanggal}</div>
+                        {latestTrx.waktu && (
+                          <div className="font-mono text-[8px] text-emerald-800 font-semibold">
+                            {latestTrx.waktu} WIB
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -410,7 +426,7 @@ export const WaliDashboard: React.FC<WaliDashboardProps> = ({
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
-                  <th className="p-3">Tanggal</th>
+                  <th className="p-3">Waktu Pembayaran</th>
                   <th className="p-3">Jenis Pembayaran</th>
                   <th className="p-3 text-right">Tagihan</th>
                   <th className="p-3 text-right">Dibayar</th>
@@ -428,10 +444,15 @@ export const WaliDashboard: React.FC<WaliDashboardProps> = ({
                 ) : (
                   myTransactions.map(trx => (
                     <tr key={trx.id_transaksi} className="hover:bg-slate-50">
-                      <td className="p-3 whitespace-nowrap text-slate-600 font-medium">{trx.tanggal}</td>
+                      <td className="p-3 whitespace-nowrap text-slate-600 font-medium">
+                        <div className="font-semibold text-slate-800">{trx.tanggal}</div>
+                        <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                          {trx.waktu ? `${trx.waktu} WIB` : 'Waktu tercatat'}
+                        </div>
+                      </td>
                       <td className="p-3">
-                        <div className="font-bold text-slate-900">{trx.jenis}</div>
-                        {trx.bulan && <div className="text-[10px] text-slate-500">{trx.bulan}</div>}
+                        <div className="font-bold text-slate-900">{getStandardTransactionTitle(trx)}</div>
+                        {trx.keterangan && <div className="text-[10px] text-slate-500">{trx.keterangan}</div>}
                       </td>
                       <td className="p-3 text-right">{formatRupiah(trx.nominal_tagihan)}</td>
                       <td className="p-3 text-right font-extrabold text-emerald-800">{formatRupiah(trx.nominal_bayar)}</td>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Student, Transaction, SchoolSetting } from '../../types';
-import { calculateStudentSppStatus } from '../../utils/sppLogic';
+import { calculateStudentSppStatus, getStandardTransactionTitle } from '../../utils/sppLogic';
 import { createPaymentConfirmationWaUrl, createTunggakanReminderWaUrl } from '../../utils/whatsappHelper';
 import { 
   X, 
@@ -402,8 +402,8 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
                               )}
                             </td>
                             <td className="p-2.5">
-                              <div className="font-semibold text-slate-900">{trx.jenis}</div>
-                              {trx.bulan && <div className="text-[10px] text-emerald-700">{trx.bulan}</div>}
+                              <div className="font-semibold text-slate-900">{getStandardTransactionTitle(trx)}</div>
+                              {trx.keterangan && <div className="text-[10px] text-slate-500">{trx.keterangan}</div>}
                             </td>
                             <td className="p-2.5 text-right text-slate-600">{formatRupiah(trx.nominal_tagihan)}</td>
                             <td className="p-2.5 text-right font-bold text-emerald-700">{formatRupiah(trx.nominal_bayar)}</td>

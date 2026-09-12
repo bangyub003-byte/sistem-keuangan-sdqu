@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { SchoolSetting, Transaction, KeuanganRecord, Student } from '../types';
-import { calculateStudentSppStatus, calculateAllStudentsSppSummary } from '../utils/sppLogic';
+import { calculateStudentSppStatus, calculateAllStudentsSppSummary, getStandardTransactionTitle } from '../utils/sppLogic';
 import { createTunggakanReminderWaUrl } from '../utils/whatsappHelper';
 import { Printer, X, Download, FileText, CheckCircle2 } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
@@ -279,8 +279,7 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                 <tr>
                   <td className="border border-slate-300 p-3 text-center">1</td>
                   <td className="border border-slate-300 p-3">
-                    <div className="font-semibold text-slate-900">{transaction.jenis}</div>
-                    {transaction.bulan && <div className="text-xs text-slate-500">Periode: {transaction.bulan}</div>}
+                    <div className="font-semibold text-slate-900">{getStandardTransactionTitle(transaction)}</div>
                     {transaction.keterangan && <div className="text-xs italic text-slate-500 mt-1">{transaction.keterangan}</div>}
                     {transaction.status === 'CANCEL' && transaction.alasan_batal && (
                       <div className="text-xs text-rose-600 font-medium mt-1">Dibatalkan: {transaction.alasan_batal}</div>
@@ -339,7 +338,7 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                       <div className="text-slate-500 font-mono text-[10px]">{trx.nisn}</div>
                     </td>
                     <td className="border border-slate-300 p-2">{trx.kelas || '-'}</td>
-                    <td className="border border-slate-300 p-2">{trx.jenis}</td>
+                    <td className="border border-slate-300 p-2">{getStandardTransactionTitle(trx)}</td>
                     <td className="border border-slate-300 p-2 text-right font-bold text-emerald-800">{formatRupiah(trx.nominal_bayar)}</td>
                     <td className="border border-slate-300 p-2 text-center font-semibold text-[11px]">{trx.status}</td>
                     <td className="border border-slate-300 p-2 text-slate-600">{trx.petugas}</td>

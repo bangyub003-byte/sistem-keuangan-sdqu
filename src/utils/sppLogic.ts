@@ -98,7 +98,45 @@ export function getAcademicYearMonths(settingTahunAjaran?: string, referenceDate
 }
 
 /**
- * Checks whether a given transaction matches a specific academic month
+ * Standardized transaction title / description helper:
+ * Always produces "SPP Bulan [Nama Bulan]" for SPP transactions.
+ * Example: "SPP Bulan Oktober 2026" instead of generic "SPP Bulanan".
+ */
+export function getStandardTransactionTitle(trx: {
+  jenis?: string;
+  kategori?: string;
+  bulan?: string;
+  keterangan?: string;
+}): string {
+  const isSpp = trx.kategori === 'SPP' ||
+                (trx.jenis || '').toLowerCase().includes('spp') ||
+                Boolean(trx.bulan);
+
+  if (isSpp && trx.bulan) {
+    const cleanBulan = trx.bulan.trim();
+    if (cleanBulan.toLowerCase().startsWith('spp bulan')) {
+      return cleanBulan;
+    }
+    if (cleanBulan.toLowerCase().startsWith('spp')) {
+      return `SPP Bulan ${cleanBulan.slice(3).trim()}`;
+    }
+    return `SPP Bulan ${cleanBulan}`;
+  }
+
+  if (isSpp && trx.keterangan && trx.keterangan.toLowerCase().includes('spp bulan')) {
+    const match = trx.keterangan.match(/spp\s+bulan\s+([a-zA-Z]+\s*\d{4}|[a-zA-Z]+)/i);
+    if (match) {
+      return `SPP Bulan ${match[1]}`;
+    }
+  }
+
+  return trx.jenis || 'Transaksi';
+}
+
+/**
+ * Checks whether a given transaction matches a specific academic month.
+ * Supports exact month name, abbreviations, multi-month strings (e.g. "Oktober, November, Desember 2026"),
+ * and range strings (e.g. "Oktober - Desember 2026" or "Oktober s/d Desember 2026").
  */
 export function matchesMonth(t: Transaction, month: AcademicMonth): boolean {
   if (t.status === 'CANCEL') return false;
@@ -114,23 +152,58 @@ export function matchesMonth(t: Transaction, month: AcademicMonth): boolean {
   const mName = month.monthName.toLowerCase();
   const mYearStr = String(month.year);
 
-  // Check if t.bulan matches month name
-  if (tBulan) {
-    if (tBulan.includes(mName)) {
-      if (/\d{4}/.test(tBulan)) {
-        return tBulan.includes(mYearStr);
+  // Helper to test if a string matches the target month
+  const testMonthMatch = (text: string): boolean => {
+    if (!text) return false;
+
+    // 1. Direct inclusion of full month name
+    if (text.includes(mName)) {
+      if (/\d{4}/.test(text)) {
+        return text.includes(mYearStr);
       }
       return true;
     }
-  }
 
-  // Check if t.jenis or t.keterangan contains month name
-  if (tJenis.includes(mName) || tKet.includes(mName)) {
-    if (/\d{4}/.test(tJenis) || /\d{4}/.test(tKet)) {
-      return tJenis.includes(mYearStr) || tKet.includes(mYearStr);
+    // 2. Multi-month range matching e.g. "Oktober - Desember 2026" or "Oktober s/d Desember 2026"
+    const rangeMatch = text.match(/([a-z]+)\s*(?:-|–|—|s\/d|sd|sampai|s\.d\.)\s*([a-z]+)/i);
+    if (rangeMatch) {
+      const startM = rangeMatch[1].toLowerCase();
+      const endM = rangeMatch[2].toLowerCase();
+      const ACADEMIC_ORDER = ['juli', 'agustus', 'september', 'oktober', 'november', 'desember', 'januari', 'februari', 'maret', 'april', 'mei', 'juni'];
+      const sIdx = ACADEMIC_ORDER.findIndex(m => m.startsWith(startM.slice(0, 3)));
+      const eIdx = ACADEMIC_ORDER.findIndex(m => m.startsWith(endM.slice(0, 3)));
+      const curIdx = ACADEMIC_ORDER.indexOf(mName);
+
+      if (sIdx !== -1 && eIdx !== -1 && curIdx !== -1) {
+        const inRange = sIdx <= eIdx
+          ? curIdx >= sIdx && curIdx <= eIdx
+          : curIdx >= sIdx || curIdx <= eIdx;
+        if (inRange) {
+          if (/\d{4}/.test(text)) {
+            return text.includes(mYearStr);
+          }
+          return true;
+        }
+      }
     }
-    return true;
-  }
+
+    // 3. Comma / and separated list e.g. "Oktober, November, Desember"
+    const words = text.split(/[\s,;&+/]+/);
+    const mPrefix = mName.slice(0, 3);
+    const hasWord = words.some(w => w === mName || (w.length >= 3 && w.startsWith(mPrefix)));
+    if (hasWord) {
+      if (/\d{4}/.test(text)) {
+        return text.includes(mYearStr);
+      }
+      return true;
+    }
+
+    return false;
+  };
+
+  if (testMonthMatch(tBulan)) return true;
+  if (testMonthMatch(tJenis)) return true;
+  if (testMonthMatch(tKet)) return true;
 
   return false;
 }
@@ -181,30 +254,34 @@ export function calculateStudentSppStatus(
 
     let status: 'LUNAS' | 'KURANG' | 'BELUM_BAYAR' | 'BELUM_JATUH_TEMPO' = 'BELUM_BAYAR';
     let dibayar = 0;
-    let sisa = isDue ? monthlyFee : 0;
-
-    if (!isDue) {
-      status = 'BELUM_JATUH_TEMPO';
-      sisa = 0;
-    }
+    let sisa = 0;
+    let tagihan = 0;
 
     if (matchingTrxs.length > 0) {
       dibayar = matchingTrxs.reduce((sum, t) => sum + (t.nominal_bayar || 0), 0);
       const hasLunas = matchingTrxs.some(t => t.status === 'LUNAS');
 
+      // PERBAIKAN REQ 1: Status LUNAS SELALU diberikan jika ada transaksi LUNAS
+      // atau total bayar mencukupi nominal SPP, terlepas dari apakah bulan tersebut sudah jatuh tempo atau belum.
       if (hasLunas || dibayar >= monthlyFee) {
         status = 'LUNAS';
+        tagihan = monthlyFee;
         sisa = 0;
       } else {
         status = 'KURANG';
+        tagihan = monthlyFee;
         sisa = Math.max(0, monthlyFee - dibayar);
       }
     } else {
       if (isDue) {
         status = 'BELUM_BAYAR';
+        tagihan = monthlyFee;
+        dibayar = 0;
         sisa = monthlyFee;
       } else {
         status = 'BELUM_JATUH_TEMPO';
+        tagihan = 0;
+        dibayar = 0;
         sisa = 0;
       }
     }
@@ -213,7 +290,7 @@ export function calculateStudentSppStatus(
       ...m,
       isDue,
       status,
-      tagihan: isDue ? monthlyFee : 0,
+      tagihan,
       dibayar,
       sisa,
       transactions: matchingTrxs
@@ -221,11 +298,18 @@ export function calculateStudentSppStatus(
   });
 
   const dueMonths = allMonths.filter(m => m.isDue);
-  const paidMonths = dueMonths.filter(m => m.status === 'LUNAS');
-  const unpaidDueMonths = dueMonths.filter(m => m.status !== 'LUNAS');
+  // PERBAIKAN REQ 1: paidMonths mencakup SEMUA bulan yang lunas (termasuk yang dibayar di muka)
+  const paidMonths = allMonths.filter(m => m.status === 'LUNAS');
+  // Hanya bulan yang sudah jatuh tempo dan belum lunas yang dihitung sebagai tunggakan
+  const unpaidDueMonths = allMonths.filter(m => m.isDue && m.status !== 'LUNAS');
 
-  const totalTagihanDue = dueMonths.reduce((acc, m) => acc + m.tagihan, 0);
-  const totalDibayarDue = dueMonths.reduce((acc, m) => acc + m.dibayar, 0);
+  // Total Tagihan SPP: mencakup semua bulan jatuh tempo + bulan di muka yang sudah dibayar/ditagihkan
+  const totalTagihanDue = allMonths
+    .filter(m => m.isDue || m.dibayar > 0)
+    .reduce((acc, m) => acc + (m.tagihan || monthlyFee), 0);
+  // Total Pembayaran SPP Masuk: SEMUA pembayaran SPP yang sudah masuk di sistem
+  const totalDibayarDue = allMonths.reduce((acc, m) => acc + m.dibayar, 0);
+  // Total Tunggakan SPP: hanya bulan jatuh tempo yang menunggak
   const totalTunggakanSpp = unpaidDueMonths.reduce((acc, m) => acc + m.sisa, 0);
 
   const monthsNunggakList = unpaidDueMonths.map(m => m.monthName);
@@ -243,11 +327,17 @@ export function calculateStudentSppStatus(
   const grandTotalDibayar = totalDibayarDue + nonSppDibayar;
   const grandTotalSisa = totalTunggakanSpp + nonSppSisa;
 
-  // Sinkronisasi mutlak: jika sisa total 0 ATAU tidak ada bulan jatuh tempo yang menunggak, maka LUNAS
-  const isLunas = (unpaidDueMonths.length === 0 || totalTunggakanSpp === 0) && grandTotalSisa === 0;
+  // Sinkronisasi mutlak: jika tidak ada tunggakan jatuh tempo dan tidak ada sisa non-SPP, maka LUNAS
+  const isLunas = unpaidDueMonths.length === 0 && grandTotalSisa === 0;
   let statusLabel = '';
   if (isLunas) {
-    statusLabel = 'Lunas sampai bulan berjalan';
+    const advancePaidMonths = paidMonths.filter(pm => !pm.isDue);
+    if (advancePaidMonths.length > 0) {
+      const lastPaid = advancePaidMonths[advancePaidMonths.length - 1];
+      statusLabel = `Lunas (Termasuk bayar di muka s/d ${lastPaid.monthName} ${lastPaid.year})`;
+    } else {
+      statusLabel = 'Lunas sampai bulan berjalan';
+    }
   } else if (unpaidDueMonths.length > 0) {
     const count = unpaidDueMonths.length;
     statusLabel = `Menunggak ${count} bulan (${monthsNunggakList.join(', ')})`;
