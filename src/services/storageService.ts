@@ -995,28 +995,66 @@ export class StorageService {
         this.setDataVersion(remoteVersion);
       }
 
-      // Parse Setting (Profil Sekolah, Kepala Sekolah, Rekening, SPP Default) terlebih dahulu
+      // Parse Setting (Profil Sekolah, Kepala Sekolah, Rekening, SPP Default, Titik Awal Kewajiban SPP)
       let parsedSetting: SchoolSetting | undefined = undefined;
       const rawSetting = data.settings || data.setting || data.pengaturan;
       if (rawSetting && typeof rawSetting === 'object') {
         const cur = this.getSetting();
+        const settingObj = Array.isArray(rawSetting) ? (rawSetting[0] || {}) : rawSetting;
+
+        // Ambil bulan & tahun mulai kewajiban SPP dari berbagai kemungkinan variasi header
+        const rawMonth = settingObj.spp_mulai_bulan ??
+          settingObj.bulan_mulai_spp ??
+          settingObj.bulan_mulai ??
+          settingObj.mulai_bulan ??
+          settingObj.bulan_kewajiban_spp ??
+          settingObj['Bulan Mulai Kewajiban SPP'];
+
+        const rawYear = settingObj.spp_mulai_tahun ??
+          settingObj.tahun_mulai_spp ??
+          settingObj.tahun_mulai ??
+          settingObj.mulai_tahun ??
+          settingObj.tahun_kewajiban_spp ??
+          settingObj['Tahun Mulai Kewajiban SPP'];
+
+        // Normalisasi format nama bulan bahasa Indonesia
+        const validMonths = [
+          'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+          'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+        ];
+
+        let resolvedMonth = cur.spp_mulai_bulan || 'Oktober';
+        if (rawMonth !== undefined && rawMonth !== null && String(rawMonth).trim() !== '') {
+          const cleanM = String(rawMonth).trim();
+          const matchedMonth = validMonths.find(m => m.toLowerCase() === cleanM.toLowerCase());
+          resolvedMonth = matchedMonth || cleanM;
+        }
+
+        let resolvedYear = cur.spp_mulai_tahun || 2026;
+        if (rawYear !== undefined && rawYear !== null && String(rawYear).trim() !== '') {
+          const parsedY = parseInt(String(rawYear), 10);
+          if (!isNaN(parsedY) && parsedY >= 2000 && parsedY <= 2100) {
+            resolvedYear = parsedY;
+          }
+        }
+
         parsedSetting = {
           ...cur,
-          nama_sekolah: String(rawSetting.nama_sekolah || rawSetting.sekolah || cur.nama_sekolah),
-          logo: formatDriveUrl(rawSetting.logo || cur.logo),
-          alamat: String(rawSetting.alamat || cur.alamat),
-          no_wa: String(rawSetting.no_wa || rawSetting.whatsapp || cur.no_wa),
-          kop_surat: String(rawSetting.kop_surat || cur.kop_surat),
-          tahun_ajaran: String(rawSetting.tahun_ajaran || rawSetting.ta || cur.tahun_ajaran),
-          nama_kepsek: String(rawSetting.nama_kepsek || rawSetting.nama_kepala_sekolah || rawSetting.kepala_sekolah || rawSetting.kepsek || cur.nama_kepsek),
-          nama_bendahara: String(rawSetting.nama_bendahara || rawSetting.bendahara || cur.nama_bendahara),
-          spp_default_nominal: Number(rawSetting.spp_default_nominal) || cur.spp_default_nominal,
-          nama_bank: String(rawSetting.nama_bank || rawSetting.bank || cur.nama_bank || ''),
-          no_rekening: String(rawSetting.no_rekening || rawSetting.rekening || rawSetting.norek || cur.no_rekening || ''),
-          atas_nama_rekening: String(rawSetting.atas_nama_rekening || rawSetting.atas_nama || cur.atas_nama_rekening || ''),
-          qris_image: formatDriveUrl(rawSetting.qris_image || rawSetting.qris || cur.qris_image || ''),
-          spp_mulai_bulan: rawSetting.spp_mulai_bulan ? String(rawSetting.spp_mulai_bulan) : cur.spp_mulai_bulan,
-          spp_mulai_tahun: rawSetting.spp_mulai_tahun ? Number(rawSetting.spp_mulai_tahun) : cur.spp_mulai_tahun
+          nama_sekolah: String(settingObj.nama_sekolah || settingObj.sekolah || cur.nama_sekolah),
+          logo: formatDriveUrl(settingObj.logo || cur.logo),
+          alamat: String(settingObj.alamat || cur.alamat),
+          no_wa: String(settingObj.no_wa || settingObj.whatsapp || cur.no_wa),
+          kop_surat: String(settingObj.kop_surat || cur.kop_surat),
+          tahun_ajaran: String(settingObj.tahun_ajaran || settingObj.ta || cur.tahun_ajaran),
+          nama_kepsek: String(settingObj.nama_kepsek || settingObj.nama_kepala_sekolah || settingObj.kepala_sekolah || settingObj.kepsek || cur.nama_kepsek),
+          nama_bendahara: String(settingObj.nama_bendahara || settingObj.bendahara || cur.nama_bendahara),
+          spp_default_nominal: Number(settingObj.spp_default_nominal) || cur.spp_default_nominal,
+          nama_bank: String(settingObj.nama_bank || settingObj.bank || cur.nama_bank || ''),
+          no_rekening: String(settingObj.no_rekening || settingObj.rekening || settingObj.norek || cur.no_rekening || ''),
+          atas_nama_rekening: String(settingObj.atas_nama_rekening || settingObj.atas_nama || cur.atas_nama_rekening || ''),
+          qris_image: formatDriveUrl(settingObj.qris_image || settingObj.qris || cur.qris_image || ''),
+          spp_mulai_bulan: resolvedMonth,
+          spp_mulai_tahun: resolvedYear
         };
         localStorage.setItem(STORAGE_KEYS.SETTING, JSON.stringify(parsedSetting));
       }

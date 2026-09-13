@@ -11,7 +11,7 @@ export const INITIAL_SETTING: SchoolSetting = {
   nama_kepsek: "Ust. H. Ahmad Mufid, M.Pd.",
   nama_bendahara: "Usth. Nur Khasanah, S.E.I.",
   spp_default_nominal: 85000,
-  spp_mulai_bulan: "September",
+  spp_mulai_bulan: "Oktober",
   spp_mulai_tahun: 2026,
   gas_url: APP_CONFIG.DEFAULT_GAS_URL,
   drive_folder_id: APP_CONFIG.DEFAULT_DRIVE_FOLDER_ID,

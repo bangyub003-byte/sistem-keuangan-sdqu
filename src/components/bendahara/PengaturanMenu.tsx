@@ -33,6 +33,16 @@ export const PengaturanMenu: React.FC<PengaturanMenuProps> = ({
     spreadsheet_id: setting.spreadsheet_id || APP_CONFIG.DEFAULT_SPREADSHEET_ID,
     drive_folder_id: setting.drive_folder_id || APP_CONFIG.DEFAULT_DRIVE_FOLDER_ID
   });
+
+  // Sinkronkan form data saat prop setting diperbarui dari auto-sync/polling
+  React.useEffect(() => {
+    setFormData({
+      ...setting,
+      gas_url: setting.gas_url || APP_CONFIG.DEFAULT_GAS_URL,
+      spreadsheet_id: setting.spreadsheet_id || APP_CONFIG.DEFAULT_SPREADSHEET_ID,
+      drive_folder_id: setting.drive_folder_id || APP_CONFIG.DEFAULT_DRIVE_FOLDER_ID
+    });
+  }, [setting]);
   const [testStatus, setTestStatus] = useState<{ testing: boolean; message: string; success?: boolean }>({
     testing: false,
     message: ''

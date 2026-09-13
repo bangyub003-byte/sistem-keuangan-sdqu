@@ -479,6 +479,10 @@ function getSheetRows(ss, sheetName) {
         normalizedKey = "atas_nama_rekening";
       } else if (normalizedKey === "qris" || normalizedKey === "qris_image" || normalizedKey === "gambar_qris") {
         normalizedKey = "qris_image";
+      } else if (normalizedKey === "spp_mulai_bulan" || normalizedKey === "bulan_mulai_spp" || normalizedKey === "bulan_mulai" || normalizedKey === "mulai_bulan" || normalizedKey === "bulan_kewajiban_spp") {
+        normalizedKey = "spp_mulai_bulan";
+      } else if (normalizedKey === "spp_mulai_tahun" || normalizedKey === "tahun_mulai_spp" || normalizedKey === "tahun_mulai" || normalizedKey === "mulai_tahun" || normalizedKey === "tahun_kewajiban_spp") {
+        normalizedKey = "spp_mulai_tahun";
       }
 
       var cellVal = data[i][j];
@@ -991,6 +995,9 @@ function handleUpdateSetting(ss, s) {
     s.spp_mulai_bulan || "",
     s.spp_mulai_tahun || ""
   ];
+
+  // Pastikan baris header 1 selalu lengkap dan sinkron
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
 
   if (sheet.getLastRow() >= 2) {
     sheet.getRange(2, 1, 1, headers.length).setValues([rowData]);
