@@ -17,7 +17,7 @@
  * pengunjung. Jika berbeda, browser akan otomatis me-reload halaman SEKALI
  * dengan cache-bypass sehingga pengguna langsung menerima kode terbaru.
  */
-export const APP_BUILD_VERSION = "2026-09-13-1400";
+export const APP_BUILD_VERSION = "2026-09-13-1530";
 
 export const APP_CONFIG = {
   BUILD_VERSION: APP_BUILD_VERSION,

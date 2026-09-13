@@ -98,8 +98,9 @@ export function getAllAcademicYearMonths(settingTahunAjaran?: string, referenceD
 }
 
 /**
- * Generates the active SPP obligation months sequence of the academic year,
- * filtering out any months prior to the configured start month/year (titik awal kewajiban SPP).
+ * Generates exactly 12 consecutive SPP obligation months sequence,
+ * starting from the configured start month and year (titik awal kewajiban SPP),
+ * handling year rollovers seamlessly (e.g. Oktober 2026 ... September 2027 = exactly 12 consecutive months).
  * If startMonthName or startYearOverride is not provided, reads the latest configuration from StorageService.
  */
 export function getAcademicYearMonths(
@@ -108,25 +109,48 @@ export function getAcademicYearMonths(
   startMonthName?: string,
   startYearOverride?: number
 ): AcademicMonth[] {
-  const fullMonths = getAllAcademicYearMonths(settingTahunAjaran, referenceDate);
-
-  // Ambil titik awal kewajiban SPP: prioritas parameter, lalu setting tersimpan di StorageService, lalu default 'Juli'
+  // Ambil titik awal kewajiban SPP: prioritas parameter, lalu setting tersimpan di StorageService, lalu default 'Oktober'
   const currentSetting = StorageService.getSetting();
-  const effectiveStartMonthName = startMonthName || currentSetting.spp_mulai_bulan || 'Juli';
-  const startYear = getAcademicStartYear(settingTahunAjaran || currentSetting.tahun_ajaran, referenceDate);
-  const effectiveStartYear = startYearOverride || currentSetting.spp_mulai_tahun || startYear;
+  const effectiveStartMonthName = startMonthName || currentSetting.spp_mulai_bulan || 'Oktober';
+  const defaultStartYear = getAcademicStartYear(settingTahunAjaran || currentSetting.tahun_ajaran, referenceDate);
+  const rawYear = startYearOverride || currentSetting.spp_mulai_tahun || defaultStartYear;
+  const effectiveStartYear = typeof rawYear === 'string' ? (parseInt(rawYear, 10) || defaultStartYear) : rawYear;
 
-  const startMonthIdx = INDONESIAN_MONTHS.indexOf(effectiveStartMonthName);
-  if (startMonthIdx >= 0) {
-    const startAbsolute = effectiveStartYear * 12 + startMonthIdx;
-    // Saring hanya bulan yang sama dengan atau setelah titik awal kewajiban SPP
-    return fullMonths.filter(m => {
-      const mAbs = m.year * 12 + m.calendarMonthIndex;
-      return mAbs >= startAbsolute;
+  // Cari index bulan mulai (case-insensitive)
+  const cleanMonth = (effectiveStartMonthName || '').trim().toLowerCase();
+  let startMonthIdx = INDONESIAN_MONTHS.findIndex(m => m.toLowerCase() === cleanMonth);
+  if (startMonthIdx < 0) {
+    startMonthIdx = 9; // Default Oktober (index 9) jika tidak ditemukan
+  }
+
+  const curCalYear = referenceDate.getFullYear();
+  const curCalMonth = referenceDate.getMonth();
+  const curAbsolute = curCalYear * 12 + curCalMonth;
+
+  // Bangun TEPAT 12 BULAN BERURUTAN mulai dari bulan & tahun yang ditentukan
+  const months: AcademicMonth[] = [];
+  for (let i = 0; i < 12; i++) {
+    const totalMonthIdx = startMonthIdx + i;
+    const calIdx = totalMonthIdx % 12;
+    const year = effectiveStartYear + Math.floor(totalMonthIdx / 12);
+    const absValue = year * 12 + calIdx;
+    const isDue = absValue <= curAbsolute;
+    const isCurrentMonth = absValue === curAbsolute;
+    const monthName = INDONESIAN_MONTHS[calIdx];
+    const label = `${monthName} ${year}`;
+
+    months.push({
+      indexInYear: i,
+      calendarMonthIndex: calIdx,
+      monthName,
+      year,
+      label,
+      isDue,
+      isCurrentMonth
     });
   }
 
-  return fullMonths;
+  return months;
 }
 
 /**
@@ -258,15 +282,20 @@ export function calculateStudentSppStatus(
   const startYear = getAcademicStartYear(effTahunAjaran, referenceDate);
   const academicYear = effTahunAjaran || `${startYear}/${startYear + 1}`;
 
-  // Titik awal kewajiban SPP: prioritas per-murid (murid pindahan), lalu parameter defaultStartMonth, lalu setting StorageService, lalu 'Juli'
-  const effectiveStartMonthName = student.spp_mulai_bulan || defaultStartMonth || currentSetting.spp_mulai_bulan || 'Juli';
-  const effectiveStartYear = student.spp_mulai_tahun || defaultStartYear || currentSetting.spp_mulai_tahun || startYear;
+  // Titik awal kewajiban SPP: prioritas per-murid (murid pindahan), lalu parameter defaultStartMonth, lalu setting StorageService, lalu 'Oktober'
+  const effectiveStartMonthName = student.spp_mulai_bulan || defaultStartMonth || currentSetting.spp_mulai_bulan || 'Oktober';
+  const fallbackStartYear = getAcademicStartYear(effTahunAjaran, referenceDate);
+  const rawYear = student.spp_mulai_tahun || defaultStartYear || currentSetting.spp_mulai_tahun || fallbackStartYear;
+  const effectiveStartYear = typeof rawYear === 'string' ? (parseInt(rawYear, 10) || fallbackStartYear) : rawYear;
 
-  const startMonthIdx = INDONESIAN_MONTHS.indexOf(effectiveStartMonthName);
-  const startCalIdx = startMonthIdx >= 0 ? startMonthIdx : 6; // Default to Juli (idx 6)
-  const startAbsolute = effectiveStartYear * 12 + startCalIdx;
+  const cleanMonth = (effectiveStartMonthName || '').trim().toLowerCase();
+  let startMonthIdx = INDONESIAN_MONTHS.findIndex(m => m.toLowerCase() === cleanMonth);
+  if (startMonthIdx < 0) {
+    startMonthIdx = 9; // Default to Oktober (idx 9)
+  }
+  const startAbsolute = effectiveStartYear * 12 + startMonthIdx;
 
-  // Saring daftar bulan akademik hanya mulai dari titik awal kewajiban SPP ke depan
+  // Saring daftar bulan akademik hanya mulai dari titik awal kewajiban SPP ke depan (tepat 12 bulan berurutan)
   const academicMonths = getAcademicYearMonths(effTahunAjaran, referenceDate, effectiveStartMonthName, effectiveStartYear);
 
   const curCalYear = referenceDate.getFullYear();
@@ -424,7 +453,7 @@ export function calculateAllStudentsSppSummary(
   defaultStartYear?: number
 ) {
   const currentSetting = StorageService.getSetting();
-  const effStartMonth = defaultStartMonth || currentSetting.spp_mulai_bulan || 'Juli';
+  const effStartMonth = defaultStartMonth || currentSetting.spp_mulai_bulan || 'Oktober';
   const effStartYear = defaultStartYear || currentSetting.spp_mulai_tahun || 2026;
 
   const activeStudents = (students || []).filter(s => s.status_aktif);

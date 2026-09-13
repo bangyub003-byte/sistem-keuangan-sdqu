@@ -353,7 +353,7 @@ export const PengaturanMenu: React.FC<PengaturanMenuProps> = ({
                   Bulan Mulai Kewajiban SPP
                 </label>
                 <select
-                  value={formData.spp_mulai_bulan || 'Juli'}
+                  value={formData.spp_mulai_bulan || 'Oktober'}
                   onChange={(e) => setFormData({ ...formData, spp_mulai_bulan: e.target.value })}
                   className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white font-semibold text-slate-800"
                 >

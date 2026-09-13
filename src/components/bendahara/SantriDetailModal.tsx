@@ -61,7 +61,7 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
     spp_nominal: student.spp_nominal || setting.spp_default_nominal || 85000,
     spp_kategori: student.spp_kategori || 'REGULER',
     spp_catatan: student.spp_catatan || '',
-    spp_mulai_bulan: student.spp_mulai_bulan || setting.spp_mulai_bulan || 'Juli',
+    spp_mulai_bulan: student.spp_mulai_bulan || setting.spp_mulai_bulan || 'Oktober',
     spp_mulai_tahun: student.spp_mulai_tahun || setting.spp_mulai_tahun || 2026
   });
   const [sppSaved, setSppSaved] = useState(false);
@@ -309,7 +309,7 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
                     Rincian Pembayaran SPP Per Bulan (TA {setting.tahun_ajaran})
                   </h4>
                   <span className="text-[11px] text-slate-500">
-                    Mulai: {student.spp_mulai_bulan || setting.spp_mulai_bulan || 'Juli'} {student.spp_mulai_tahun || setting.spp_mulai_tahun || 2026}
+                    Mulai: {student.spp_mulai_bulan || setting.spp_mulai_bulan || 'Oktober'} {student.spp_mulai_tahun || setting.spp_mulai_tahun || 2026}
                   </span>
                 </div>
 

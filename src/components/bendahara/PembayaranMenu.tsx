@@ -56,7 +56,11 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
   const [isManualPayment, setIsManualPayment] = useState(false);
   const [manualPaymentInput, setManualPaymentInput] = useState('');
   const [customPaymentTypes, setCustomPaymentTypes] = useState<string[]>([]);
-  const [selectedMonth, setSelectedMonth] = useState('September 2026');
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const startM = setting?.spp_mulai_bulan || 'Oktober';
+    const startY = setting?.spp_mulai_tahun || 2026;
+    return `${startM} ${startY}`;
+  });
   const [customTagihan, setCustomTagihan] = useState<number>(selectedStudent?.spp_nominal || setting?.spp_default_nominal || 85000);
   const [nominalBayar, setNominalBayar] = useState<number>(selectedStudent?.spp_nominal || setting?.spp_default_nominal || 85000);
   const [keterangan, setKeterangan] = useState('');
