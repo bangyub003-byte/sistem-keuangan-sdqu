@@ -618,6 +618,9 @@ export default function App() {
                     onImportStudents={handleImportStudents}
                     onOpenKartuSpp={handleOpenKartuSpp}
                     onOpenReceipt={handleOpenReceipt}
+                    operatorName={currentUser?.nama || 'Bendahara'}
+                    onProcessPayment={handleProcessPayment}
+                    onVerifyPaymentStatus={handleVerifyPaymentStatus}
                     onNavigateToPayment={(st) => {
                       setSelectedStudentForPayment(st);
                       setActiveBendaharaTab('PEMBAYARAN');
@@ -683,6 +686,8 @@ export default function App() {
                 keuangan={keuangan}
                 setting={setting}
                 onOpenPrintReport={handleOpenPrintReport}
+                onOpenKartuSpp={handleOpenKartuSpp}
+                onOpenReceipt={handleOpenReceipt}
               />
             )}
 

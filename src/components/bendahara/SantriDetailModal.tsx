@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Student, Transaction, SchoolSetting } from '../../types';
-import { calculateStudentSppStatus, getStandardTransactionTitle, formatTransactionTimestamp } from '../../utils/sppLogic';
+import { calculateStudentSppStatus, getStandardTransactionTitle, formatTransactionTimestamp, isHistoricalArrearsTrx } from '../../utils/sppLogic';
 import { createPaymentConfirmationWaUrl, createTunggakanReminderWaUrl } from '../../utils/whatsappHelper';
+import { StorageService } from '../../services/storageService';
 import { 
   X, 
   User, 
@@ -20,7 +21,10 @@ import {
   ArrowRight,
   ShieldCheck,
   Tag,
-  Printer
+  Printer,
+  History,
+  Plus,
+  CheckCircle
 } from 'lucide-react';
 
 interface SantriDetailModalProps {
@@ -28,10 +32,14 @@ interface SantriDetailModalProps {
   transactions: Transaction[];
   setting: SchoolSetting;
   onClose: () => void;
-  onUpdateStudent: (updated: Student) => void;
+  onUpdateStudent?: (updated: Student) => void;
   onNavigateToPayment?: (student: Student) => void;
   onOpenReceipt?: (trx: Transaction) => void;
   onOpenKartuSpp?: (student: Student) => void;
+  operatorName?: string;
+  onProcessPayment?: (data: any) => Transaction;
+  onVerifyPaymentStatus?: (trxId: string, newStatus: 'LUNAS' | 'KURANG' | 'CANCEL', paidAmount?: number, reason?: string) => void;
+  isReadOnly?: boolean;
 }
 
 export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
@@ -42,7 +50,11 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
   onUpdateStudent,
   onNavigateToPayment,
   onOpenReceipt,
-  onOpenKartuSpp
+  onOpenKartuSpp,
+  operatorName,
+  onProcessPayment,
+  onVerifyPaymentStatus,
+  isReadOnly = false
 }) => {
   const [activeTab, setActiveTab] = useState<'REKAP' | 'TRANSAKSI' | 'EDIT_SPP' | 'EDIT_IDENTITAS'>('REKAP');
   
@@ -81,11 +93,18 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
     .filter(t => t.nisn === student.nisn)
     .sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime());
 
+  // Filter tunggakan historis aktif (status KURANG)
+  const activeHistoricalArrears = useMemo(() => {
+    return (sppSummary.historicalTransactions || []).filter(t => t.status === 'KURANG');
+  }, [sppSummary.historicalTransactions]);
+
   const formatRupiah = (val: number) => 'Rp ' + (val || 0).toLocaleString('id-ID');
 
   const handleSaveIdentitas = (e: React.FormEvent) => {
     e.preventDefault();
-    onUpdateStudent(identitasForm);
+    if (onUpdateStudent) {
+      onUpdateStudent(identitasForm);
+    }
     setIdentitasSaved(true);
     setTimeout(() => setIdentitasSaved(false), 2500);
   };
@@ -100,12 +119,139 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
       spp_mulai_bulan: sppForm.spp_mulai_bulan,
       spp_mulai_tahun: Number(sppForm.spp_mulai_tahun)
     };
-    onUpdateStudent(updated);
+    if (onUpdateStudent) {
+      onUpdateStudent(updated);
+    }
     setSppSaved(true);
     setTimeout(() => setSppSaved(false), 2500);
   };
 
   const tunggakanWaUrl = createTunggakanReminderWaUrl(setting, student, sppSummary);
+
+  // Historical Arrears Recording State
+  const [showHistorisModal, setShowHistorisModal] = useState(false);
+  const [bulanHistoris, setBulanHistoris] = useState<string>('Januari');
+  const [tahunHistoris, setTahunHistoris] = useState<number>(new Date().getFullYear() - 1);
+  const [nominalHistoris, setNominalHistoris] = useState<number>(student.spp_nominal || setting.spp_default_nominal || 85000);
+  const [catatanHistoris, setCatatanHistoris] = useState<string>('');
+  const [isSubmittingHistoris, setIsSubmittingHistoris] = useState(false);
+  const [historisSuccess, setHistorisSuccess] = useState(false);
+
+  // Settlement / Pelunasan State for Historical Arrears
+  const [showSettleModal, setShowSettleModal] = useState(false);
+  const [selectedTrxToSettle, setSelectedTrxToSettle] = useState<Transaction | null>(null);
+  const [settleNominal, setSettleNominal] = useState<number>(0);
+  const [settleNote, setSettleNote] = useState<string>('');
+  const [isSubmittingSettle, setIsSubmittingSettle] = useState(false);
+  const [settleSuccess, setSettleSuccess] = useState(false);
+
+  const handleSaveHistoris = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (nominalHistoris <= 0) {
+      alert('Nominal tunggakan harus lebih besar dari Rp 0');
+      return;
+    }
+    setIsSubmittingHistoris(true);
+    try {
+      const operator = operatorName || 'Bendahara';
+      const cleanNote = catatanHistoris ? catatanHistoris.trim() : '';
+      const finalKet = cleanNote ? `[Tunggakan Historis] ${cleanNote}` : '[Tunggakan Historis]';
+      const payload = {
+        nisn: student.nisn,
+        nama_siswa: student.nama,
+        kelas: student.kelas,
+        jenis: 'SPP Bulanan',
+        kategori: 'SPP',
+        bulan: `${bulanHistoris} ${tahunHistoris}`,
+        nominal_tagihan: Number(nominalHistoris),
+        nominal_bayar: 0,
+        status: 'KURANG' as const,
+        petugas: operator,
+        keterangan: finalKet
+      };
+
+      if (onProcessPayment) {
+        onProcessPayment(payload);
+      } else {
+        await StorageService.processPayment(payload);
+      }
+
+      setHistorisSuccess(true);
+      setTimeout(() => {
+        setShowHistorisModal(false);
+        setHistorisSuccess(false);
+        setCatatanHistoris('');
+      }, 1200);
+    } catch (err) {
+      console.error(err);
+      alert('Gagal mencatat tunggakan historis. Silakan coba kembali.');
+    } finally {
+      setIsSubmittingHistoris(false);
+    }
+  };
+
+  const handleSettleHistoris = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTrxToSettle) return;
+    if (settleNominal <= 0) {
+      alert('Nominal pembayaran harus lebih dari 0');
+      return;
+    }
+    setIsSubmittingSettle(true);
+    try {
+      const operator = operatorName || 'Bendahara';
+      const bayarSekarang = Number(settleNominal);
+      const prevDibayar = selectedTrxToSettle.nominal_bayar || 0;
+      const newTotalDibayar = prevDibayar + bayarSekarang;
+      const tagihan = selectedTrxToSettle.nominal_tagihan || 0;
+      const newSisa = Math.max(0, tagihan - newTotalDibayar);
+      const newStatus = newSisa === 0 ? 'LUNAS' : 'KURANG';
+      const note = settleNote.trim() || `Pelunasan tunggakan historis (${formatRupiah(bayarSekarang)})`;
+
+      if (onVerifyPaymentStatus) {
+        await onVerifyPaymentStatus(selectedTrxToSettle.id_transaksi, newStatus, newTotalDibayar, note);
+      } else {
+        await StorageService.verifyTransaction(selectedTrxToSettle.id_transaksi, newStatus, newTotalDibayar, note, operator);
+      }
+
+      // Catat kas masuk ke Keuangan jika ada nominal yang dibayar
+      if (bayarSekarang > 0) {
+        await StorageService.addKeuangan({
+          tanggal: new Date().toISOString().slice(0, 10),
+          waktu: new Date().toTimeString().slice(0, 8),
+          jenis: 'MASUK',
+          kategori: 'SPP',
+          nominal: bayarSekarang,
+          keterangan: `Pelunasan Tunggakan Historis ${selectedTrxToSettle.bulan} a.n ${student.nama} (${student.kelas})`,
+          status: 'ACTIVE',
+          id_kategori: 'KAT-SPP'
+        }, operator);
+      }
+
+      setSettleSuccess(true);
+      const updatedTrxForReceipt: Transaction = {
+        ...selectedTrxToSettle,
+        nominal_bayar: newTotalDibayar,
+        sisa: newSisa,
+        status: newStatus,
+        keterangan: `${selectedTrxToSettle.keterangan || ''} - ${note}`
+      };
+
+      setTimeout(() => {
+        setShowSettleModal(false);
+        setSettleSuccess(false);
+        setSelectedTrxToSettle(null);
+        if (onOpenReceipt && bayarSekarang > 0) {
+          onOpenReceipt(updatedTrxForReceipt);
+        }
+      }, 1000);
+    } catch (err) {
+      console.error(err);
+      alert('Gagal memproses pelunasan tunggakan historis.');
+    } finally {
+      setIsSubmittingSettle(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs">
@@ -132,6 +278,11 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
                 {student.spp_kategori && student.spp_kategori !== 'REGULER' && (
                   <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-400 text-amber-950">
                     {student.spp_kategori}
+                  </span>
+                )}
+                {isReadOnly && (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-200 text-amber-950 border border-amber-300">
+                    Mode Baca Sah (Kepala Sekolah)
                   </span>
                 )}
               </div>
@@ -183,30 +334,34 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
             <Clock className="w-3.5 h-3.5" />
             Riwayat Transaksi ({studentTransactions.length})
           </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('EDIT_SPP')}
-            className={`py-2.5 px-3 border-b-2 text-xs font-bold transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
-              activeTab === 'EDIT_SPP'
-                ? 'border-emerald-700 text-emerald-800'
-                : 'border-transparent text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            <DollarSign className="w-3.5 h-3.5" />
-            Pengaturan Tarif SPP
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('EDIT_IDENTITAS')}
-            className={`py-2.5 px-3 border-b-2 text-xs font-bold transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
-              activeTab === 'EDIT_IDENTITAS'
-                ? 'border-emerald-700 text-emerald-800'
-                : 'border-transparent text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            <Edit3 className="w-3.5 h-3.5" />
-            Edit Identitas Murid
-          </button>
+          {!isReadOnly && (
+            <>
+              <button
+                type="button"
+                onClick={() => setActiveTab('EDIT_SPP')}
+                className={`py-2.5 px-3 border-b-2 text-xs font-bold transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === 'EDIT_SPP'
+                    ? 'border-emerald-700 text-emerald-800'
+                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <DollarSign className="w-3.5 h-3.5" />
+                Pengaturan Tarif SPP
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('EDIT_IDENTITAS')}
+                className={`py-2.5 px-3 border-b-2 text-xs font-bold transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === 'EDIT_IDENTITAS'
+                    ? 'border-emerald-700 text-emerald-800'
+                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                Edit Identitas Murid
+              </button>
+            </>
+          )}
         </div>
 
         {/* Scrollable Content Body */}
@@ -229,14 +384,18 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
                 <div className={`p-4 rounded-xl border ${
                   sppSummary.grandTotalSisa > 0 ? 'bg-rose-50/70 border-rose-200' : 'bg-slate-50 border-slate-200'
                 }`}>
-                  <div className="text-[11px] font-bold text-slate-700 uppercase tracking-wide">Total Tunggakan</div>
+                  <div className="text-[11px] font-bold text-slate-700 uppercase tracking-wide">Total Akumulasi Tunggakan</div>
                   <div className={`text-xl font-extrabold mt-1 ${sppSummary.grandTotalSisa > 0 ? 'text-rose-700' : 'text-slate-700'}`}>
-                    {formatRupiah(sppSummary.grandTotalSisa)}
+                    {formatRupiah(sppSummary.totalTunggakanKeseluruhan || sppSummary.grandTotalSisa)}
                   </div>
                   <div className="text-[10px] text-slate-500 mt-0.5">
-                    {sppSummary.unpaidDueMonths.length > 0 
-                      ? `${sppSummary.unpaidDueMonths.length} bulan belum lunas`
-                      : 'Nihil tunggakan SPP'}
+                    {sppSummary.grandTotalSisa > 0 ? (
+                      <span>
+                        Bulan Berjalan: <strong className="text-slate-800">{formatRupiah(sppSummary.totalTunggakanSpp)}</strong> • Historis: <strong className="text-rose-700">{formatRupiah(sppSummary.tunggakanHistoris)}</strong>
+                      </span>
+                    ) : (
+                      'Nihil tunggakan SPP'
+                    )}
                   </div>
                 </div>
 
@@ -258,48 +417,184 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
                 </div>
               </div>
 
-              {/* Action Toolbar for this student */}
-              <div className="flex flex-wrap items-center gap-2 pt-2 pb-1 border-y border-slate-100">
-                {onNavigateToPayment && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onClose();
-                      onNavigateToPayment(student);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 text-white rounded-lg text-xs font-bold hover:bg-emerald-800 transition-colors shadow-xs cursor-pointer"
-                  >
-                    <CreditCard className="w-3.5 h-3.5" />
-                    Input Pembayaran Murid Ini
-                  </button>
-                )}
+              {/* Rincian Akumulasi Tunggakan Terpisah */}
+              <div className="p-3.5 rounded-xl border border-slate-200/90 bg-slate-50/90">
+                <div className="text-[11px] font-bold text-slate-700 uppercase tracking-wide mb-2 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
+                    Rincian Akumulasi Tunggakan Murid
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-normal">Satu sumber kebenaran data</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                  <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                    <div className="text-[10px] text-slate-500 uppercase font-semibold">Tunggakan Bulan Berjalan:</div>
+                    <div className="font-extrabold text-sm text-slate-900 mt-0.5">
+                      {formatRupiah(sppSummary.totalTunggakanSpp)}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      {sppSummary.unpaidDueMonths.length > 0
+                        ? `${sppSummary.unpaidDueMonths.length} bulan (${sppSummary.monthsNunggakList.join(', ')})`
+                        : 'Lunas sampai bulan ini'}
+                    </div>
+                  </div>
 
-                {onOpenKartuSpp && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onClose();
-                      onOpenKartuSpp(student);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-200 transition-colors cursor-pointer"
-                  >
-                    <Printer className="w-3.5 h-3.5" />
-                    Cetak Kartu SPP
-                  </button>
-                )}
+                  <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                    <div className="text-[10px] text-slate-500 uppercase font-semibold">Tunggakan Historis/Manual:</div>
+                    <div className="font-extrabold text-sm text-amber-700 mt-0.5">
+                      {formatRupiah(sppSummary.tunggakanHistoris)}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      {sppSummary.historicalTransactions.filter(t => t.status === 'KURANG').length} catatan tunggakan lampau
+                    </div>
+                  </div>
 
-                {sppSummary.grandTotalSisa > 0 && student.no_hp && (
-                  <a
-                    href={tunggakanWaUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors ml-auto shadow-xs"
-                  >
-                    <MessageCircle className="w-3.5 h-3.5" />
-                    Kirim Pengingat WA ke Wali
-                  </a>
-                )}
+                  <div className="bg-emerald-50/80 p-2.5 rounded-lg border border-emerald-200">
+                    <div className="text-[10px] text-emerald-800 uppercase font-semibold">Total Keseluruhan:</div>
+                    <div className="font-extrabold text-sm text-emerald-900 mt-0.5">
+                      {formatRupiah(sppSummary.totalTunggakanKeseluruhan || sppSummary.grandTotalSisa)}
+                    </div>
+                    <div className="text-[10px] text-emerald-700 mt-0.5">
+                      {sppSummary.totalTunggakanKeseluruhan === 0 ? 'Nihil tunggakan' : 'Akumulasi seluruh kewajiban'}
+                    </div>
+                  </div>
+                </div>
               </div>
+
+              {/* Action Toolbar for this student */}
+              {!isReadOnly ? (
+                <div className="flex flex-wrap items-center gap-2 pt-2 pb-1 border-y border-slate-100">
+                  {onNavigateToPayment && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onNavigateToPayment(student);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 text-white rounded-lg text-xs font-bold hover:bg-emerald-800 transition-colors shadow-xs cursor-pointer"
+                    >
+                      <CreditCard className="w-3.5 h-3.5" />
+                      Input Pembayaran Murid Ini
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setShowHistorisModal(true)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-amber-600 text-white rounded-lg text-xs font-bold hover:bg-amber-700 transition-colors shadow-xs cursor-pointer"
+                    title="Catat tunggakan manual/historis dari bulan/tahun lampau sebelum aplikasi digunakan"
+                  >
+                    <History className="w-3.5 h-3.5" />
+                    Catat Tunggakan Historis
+                  </button>
+
+                  {onOpenKartuSpp && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenKartuSpp(student);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-200 transition-colors cursor-pointer"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      Cetak Kartu SPP
+                    </button>
+                  )}
+
+                  {sppSummary.grandTotalSisa > 0 && student.no_hp && (
+                    <a
+                      href={tunggakanWaUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors ml-auto shadow-xs"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" />
+                      Kirim Pengingat WA ke Wali
+                    </a>
+                  )}
+                </div>
+              ) : (
+                onOpenKartuSpp && (
+                  <div className="flex items-center justify-end gap-2 pt-2 pb-1 border-y border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenKartuSpp(student);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-200 transition-colors cursor-pointer"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      Cetak Kartu SPP
+                    </button>
+                  </div>
+                )
+              )}
+
+              {/* Kartu Ringkasan Tunggakan dari Periode Sebelumnya (HANYA muncul jika ada tunggakan historis aktif) */}
+              {sppSummary.tunggakanHistoris > 0 && activeHistoricalArrears.length > 0 && (
+                <div id="tunggakan-historis-summary-card" className="bg-rose-50/75 border border-rose-200/90 rounded-xl p-3.5 sm:p-4 shadow-2xs space-y-2.5">
+                  <div className="flex items-center justify-between gap-2 border-b border-rose-200/70 pb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-rose-100 text-rose-700">
+                        <History className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="font-extrabold text-xs sm:text-sm text-rose-950">
+                          Tunggakan dari Periode Sebelumnya
+                        </h4>
+                        <p className="text-[10px] sm:text-[11px] text-rose-700/80">
+                          Kewajiban SPP periode lampau sebelum sistem berjalan yang belum terselesaikan
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-bold px-2.5 py-0.5 bg-rose-200/80 text-rose-900 rounded-full border border-rose-300 shrink-0">
+                      {activeHistoricalArrears.length} Catatan
+                    </span>
+                  </div>
+
+                  {/* Daftar ringkas per baris: nama bulan + tahun, dan nominal tunggakan */}
+                  <div className="space-y-1.5">
+                    {activeHistoricalArrears.map((trx, idx) => {
+                      const sisa = trx.sisa !== undefined && trx.sisa !== null
+                        ? trx.sisa
+                        : Math.max(0, (trx.nominal_tagihan || 0) - (trx.nominal_bayar || 0));
+                      return (
+                        <div
+                          key={trx.id_transaksi || idx}
+                          className="flex items-center justify-between px-3 py-2 rounded-lg bg-white/95 border border-rose-200/80 text-xs"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
+                            <span className="font-bold text-slate-800">
+                              {trx.bulan || 'Tunggakan Lampau'}
+                            </span>
+                            {trx.keterangan && (
+                              <span className="text-[10px] text-slate-400 hidden sm:inline">
+                                ({trx.keterangan.replace(/^\[Tunggakan Historis\]\s*/, '') || 'Historis'})
+                              </span>
+                            )}
+                          </div>
+                          <div className="font-extrabold font-mono text-rose-700">
+                            {formatRupiah(sisa)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Total keseluruhan tunggakan historis di bagian bawah kartu, dicetak tebal */}
+                  <div className="flex items-center justify-between pt-2 border-t border-rose-200/80 px-1 text-xs">
+                    <span className="font-bold text-rose-900 uppercase tracking-wide text-[11px]">
+                      Total Tunggakan Periode Sebelumnya:
+                    </span>
+                    <span className="text-sm sm:text-base font-black font-mono text-rose-700">
+                      {formatRupiah(sppSummary.tunggakanHistoris)}
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {/* Breakdown Status SPP 12 Bulan Tahun Ajaran */}
               <div>
@@ -355,6 +650,133 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
                   })}
                 </div>
               </div>
+
+              {/* Rincian Catatan Tunggakan Historis / Lampau */}
+              <div className="border border-amber-200/90 bg-amber-50/25 rounded-xl p-4 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                      <History className="w-4 h-4 text-amber-600" />
+                      Catatan Tunggakan Historis / Lampau
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Pencatatan tunggakan manual dari bulan/tahun lampau di luar periode SPP berjalan (sebelum aplikasi digunakan / koreksi buku lama).
+                    </p>
+                  </div>
+                  {!isReadOnly && (
+                    <button
+                      type="button"
+                      onClick={() => setShowHistorisModal(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-bold hover:bg-amber-700 transition-colors shadow-2xs cursor-pointer self-start sm:self-auto"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Catat Tunggakan Baru
+                    </button>
+                  )}
+                </div>
+
+                {sppSummary.historicalTransactions.length === 0 ? (
+                  <div className="bg-white/80 border border-dashed border-amber-200 rounded-lg p-5 text-center text-slate-400 text-xs">
+                    Belum ada catatan tunggakan historis untuk murid ini.{!isReadOnly && ' Klik tombol di atas jika ada tunggakan lampau yang perlu dicatat.'}
+                  </div>
+                ) : (
+                  <div className="border border-amber-200 rounded-lg overflow-hidden bg-white shadow-2xs">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-amber-50/80 text-amber-950 font-bold border-b border-amber-200">
+                        <tr>
+                          <th className="p-2.5 text-center w-8">No</th>
+                          <th className="p-2.5">Bulan & Tahun</th>
+                          <th className="p-2.5 text-right">Tagihan</th>
+                          <th className="p-2.5 text-right">Sudah Dibayar</th>
+                          <th className="p-2.5 text-right">Sisa Tunggakan</th>
+                          <th className="p-2.5 text-center">Status</th>
+                          <th className="p-2.5">Keterangan</th>
+                          <th className="p-2.5 text-center">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {sppSummary.historicalTransactions.map((ht, idx) => {
+                          const sisa = ht.sisa !== undefined ? ht.sisa : Math.max(0, (ht.nominal_tagihan || 0) - (ht.nominal_bayar || 0));
+                          const isLunas = ht.status === 'LUNAS';
+                          return (
+                            <tr key={ht.id_transaksi} className="hover:bg-amber-50/30">
+                              <td className="p-2.5 text-center text-slate-400">{idx + 1}</td>
+                              <td className="p-2.5 font-bold text-slate-900 whitespace-nowrap">
+                                {ht.bulan || 'Historis'}
+                                <div className="text-[10px] text-slate-400 font-normal">Dicatat: {ht.tanggal ? ht.tanggal.slice(0, 10) : '-'}</div>
+                              </td>
+                              <td className="p-2.5 text-right text-slate-700">{formatRupiah(ht.nominal_tagihan)}</td>
+                              <td className="p-2.5 text-right font-bold text-emerald-700">{formatRupiah(ht.nominal_bayar)}</td>
+                              <td className="p-2.5 text-right font-extrabold text-rose-700">{formatRupiah(sisa)}</td>
+                              <td className="p-2.5 text-center">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  isLunas ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                                }`}>
+                                  {ht.status}
+                                </span>
+                              </td>
+                              <td className="p-2.5 text-[11px] text-slate-600 max-w-xs">
+                                {ht.keterangan || '-'}
+                                <div className="text-[10px] text-slate-400">Petugas: {ht.petugas || 'Bendahara'}</div>
+                              </td>
+                              <td className="p-2.5 text-center whitespace-nowrap">
+                                <div className="flex items-center justify-center gap-1.5">
+                                  {!isLunas ? (
+                                    !isReadOnly ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setSelectedTrxToSettle(ht);
+                                          setSettleNominal(sisa);
+                                          setSettleNote('');
+                                          setShowSettleModal(true);
+                                        }}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+                                        title="Bayar atau lunasi tunggakan historis ini"
+                                      >
+                                        <CreditCard className="w-3 h-3" />
+                                        <span>Bayar / Lunasi</span>
+                                      </button>
+                                    ) : (
+                                      <span className="text-[10px] text-rose-700 font-semibold italic bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                                        Menunggak
+                                      </span>
+                                    )
+                                  ) : (
+                                    <>
+                                      {onOpenReceipt && (
+                                        <button
+                                          type="button"
+                                          onClick={() => onOpenReceipt(ht)}
+                                          title="Cetak Kuitansi"
+                                          className="p-1 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 rounded cursor-pointer"
+                                        >
+                                          <Printer className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                      {student.no_hp && (
+                                        <a
+                                          href={createPaymentConfirmationWaUrl(setting, student, ht)}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          title="Kirim Konfirmasi WA"
+                                          className="p-1 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded"
+                                        >
+                                          <MessageCircle className="w-3.5 h-3.5" />
+                                        </a>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -403,8 +825,15 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
                               )}
                             </td>
                             <td className="p-2.5">
-                              <div className="font-semibold text-slate-900">{getStandardTransactionTitle(trx)}</div>
-                              {trx.keterangan && <div className="text-[10px] text-slate-500">{trx.keterangan}</div>}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-semibold text-slate-900">{getStandardTransactionTitle(trx)}</span>
+                                {isHistoricalArrearsTrx(trx) && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300">
+                                    [Tunggakan Historis]
+                                  </span>
+                                )}
+                              </div>
+                              {trx.keterangan && <div className="text-[10px] text-slate-500 mt-0.5">{trx.keterangan}</div>}
                             </td>
                             <td className="p-2.5 text-right text-slate-600">{formatRupiah(trx.nominal_tagihan)}</td>
                             <td className="p-2.5 text-right font-bold text-emerald-700">{formatRupiah(trx.nominal_bayar)}</td>
@@ -420,6 +849,23 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
                             <td className="p-2.5 text-slate-600 text-[11px]">{trx.petugas}</td>
                             <td className="p-2.5 text-center">
                               <div className="flex items-center justify-center gap-1.5">
+                                {isHistoricalArrearsTrx(trx) && trx.status === 'KURANG' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const sisa = trx.sisa !== undefined ? trx.sisa : Math.max(0, (trx.nominal_tagihan || 0) - (trx.nominal_bayar || 0));
+                                      setSelectedTrxToSettle(trx);
+                                      setSettleNominal(sisa);
+                                      setSettleNote('');
+                                      setShowSettleModal(true);
+                                    }}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-[10px] font-bold transition-colors cursor-pointer shadow-2xs"
+                                    title="Bayar atau lunasi tunggakan historis ini"
+                                  >
+                                    <CreditCard className="w-3 h-3" />
+                                    <span>Bayar</span>
+                                  </button>
+                                )}
                                 {onOpenReceipt && (
                                   <button
                                     type="button"
@@ -736,6 +1182,236 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* MODAL CATAT TUNGGAKAN HISTORIS */}
+      {showHistorisModal && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 bg-slate-900/65 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-amber-700 text-white px-5 py-3.5 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <History className="w-4 h-4 text-amber-200" />
+                <h3 className="text-sm font-bold">Catat Tunggakan Manual / Historis</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowHistorisModal(false)}
+                className="text-amber-100 hover:text-white p-1 rounded-lg hover:bg-white/10 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveHistoris} className="p-5 space-y-4 text-xs">
+              <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl text-amber-900 text-[11px] leading-relaxed">
+                Gunakan form ini untuk mencatat tunggakan SPP lampau ananda <strong>{student.nama}</strong> sebelum aplikasi ini digunakan atau tahun ajaran sebelumnya.
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">
+                    Pilihan Bulan (12 Bulan)
+                  </label>
+                  <select
+                    value={bulanHistoris}
+                    onChange={(e) => setBulanHistoris(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 font-semibold text-slate-800"
+                  >
+                    {[
+                      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+                      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+                    ].map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">
+                    Pilihan Tahun
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    value={tahunHistoris}
+                    onChange={(e) => setTahunHistoris(Number(e.target.value))}
+                    placeholder="Contoh: 2024 atau 2025"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 font-mono font-bold text-slate-800"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 uppercase mb-1">
+                  Nominal Tunggakan (Rp)
+                </label>
+                <input
+                  type="number"
+                  required
+                  min={1000}
+                  value={nominalHistoris}
+                  onChange={(e) => setNominalHistoris(Number(e.target.value))}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 font-bold text-slate-900 text-sm"
+                />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Default terisi sesuai tarif SPP murid: {formatRupiah(student.spp_nominal || setting.spp_default_nominal)}
+                </p>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 uppercase mb-1">
+                  Catatan / Keterangan (Opsional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={catatanHistoris}
+                  onChange={(e) => setCatatanHistoris(e.target.value)}
+                  placeholder="Contoh: Tunggakan sebelum sistem digunakan / koreksi buku lama"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-slate-800"
+                />
+              </div>
+
+              {historisSuccess && (
+                <div className="p-2.5 rounded-lg bg-emerald-100 text-emerald-800 font-bold text-[11px] flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+                  Catatan tunggakan historis berhasil disimpan!
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowHistorisModal(false)}
+                  className="px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingHistoris}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold transition-colors shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  {isSubmittingHistoris ? 'Menyimpan...' : 'Simpan Catatan Tunggakan'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PELUNASAN TUNGGAKAN HISTORIS */}
+      {showSettleModal && selectedTrxToSettle && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 bg-slate-900/65 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-emerald-800 text-white px-5 py-3.5 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-emerald-200" />
+                <h3 className="text-sm font-bold">Pelunasan Tunggakan Historis</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSettleModal(false);
+                  setSelectedTrxToSettle(null);
+                }}
+                className="text-emerald-100 hover:text-white p-1 rounded-lg hover:bg-white/10 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSettleHistoris} className="p-5 space-y-4 text-xs">
+              <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl space-y-1 text-emerald-950">
+                <div className="font-bold text-xs">{selectedTrxToSettle.bulan} - Ananda {student.nama}</div>
+                <div className="flex justify-between text-[11px] text-emerald-800">
+                  <span>Total Tagihan:</span>
+                  <span className="font-bold">{formatRupiah(selectedTrxToSettle.nominal_tagihan)}</span>
+                </div>
+                <div className="flex justify-between text-[11px] text-emerald-800">
+                  <span>Sudah Pernah Dibayar:</span>
+                  <span>{formatRupiah(selectedTrxToSettle.nominal_bayar)}</span>
+                </div>
+                <div className="flex justify-between text-[11px] font-extrabold text-rose-700 pt-1 border-t border-emerald-200">
+                  <span>Sisa Tunggakan Saat Ini:</span>
+                  <span>
+                    {formatRupiah(selectedTrxToSettle.sisa !== undefined ? selectedTrxToSettle.sisa : Math.max(0, (selectedTrxToSettle.nominal_tagihan || 0) - (selectedTrxToSettle.nominal_bayar || 0)))}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-bold text-slate-700 uppercase">
+                    Nominal yang Dibayarkan Sekarang (Rp)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const sisa = selectedTrxToSettle.sisa !== undefined 
+                        ? selectedTrxToSettle.sisa 
+                        : Math.max(0, (selectedTrxToSettle.nominal_tagihan || 0) - (selectedTrxToSettle.nominal_bayar || 0));
+                      setSettleNominal(sisa);
+                    }}
+                    className="text-[10px] text-emerald-700 hover:underline font-bold cursor-pointer"
+                  >
+                    Bayar Lunas Penuh
+                  </button>
+                </div>
+                <input
+                  type="number"
+                  required
+                  min={1000}
+                  max={selectedTrxToSettle.sisa !== undefined ? selectedTrxToSettle.sisa : Math.max(0, (selectedTrxToSettle.nominal_tagihan || 0) - (selectedTrxToSettle.nominal_bayar || 0))}
+                  value={settleNominal}
+                  onChange={(e) => setSettleNominal(Number(e.target.value))}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 font-bold text-slate-900 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 uppercase mb-1">
+                  Catatan Pelunasan / Bukti
+                </label>
+                <input
+                  type="text"
+                  value={settleNote}
+                  onChange={(e) => setSettleNote(e.target.value)}
+                  placeholder="Misal: Diterima tunai oleh Bendahara di kantor"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 text-slate-800"
+                />
+              </div>
+
+              {settleSuccess && (
+                <div className="p-2.5 rounded-lg bg-emerald-100 text-emerald-800 font-bold text-[11px] flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+                  Pelunasan berhasil dicatat ke sistem!
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSettleModal(false);
+                    setSelectedTrxToSettle(null);
+                  }}
+                  className="px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingSettle}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold transition-colors shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  {isSubmittingSettle ? 'Memproses...' : 'Konfirmasi Pelunasan'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

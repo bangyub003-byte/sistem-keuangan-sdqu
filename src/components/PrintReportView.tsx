@@ -404,6 +404,9 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                       if (item.unpaidDueMonths.length > 0) {
                         uraianParts.push(`SPP (${item.monthsNunggakFullLabels.join(', ')})`);
                       }
+                      if (item.tunggakanHistoris > 0) {
+                        uraianParts.push(`Tunggakan Historis (Rp ${item.tunggakanHistoris.toLocaleString('id-ID')})`);
+                      }
                       if (item.nonSppSisa > 0) {
                         uraianParts.push(`Tagihan Lainnya`);
                       }

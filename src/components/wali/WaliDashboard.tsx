@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Student, Transaction, SchoolSetting, UserAccount, Announcement } from '../../types';
 import { PrintMode } from '../PrintReportView';
-import { calculateStudentSppStatus, getStandardTransactionTitle, formatTransactionTimestamp } from '../../utils/sppLogic';
+import { calculateStudentSppStatus, getStandardTransactionTitle, formatTransactionTimestamp, isHistoricalArrearsTrx } from '../../utils/sppLogic';
 import { createPaymentConfirmationWaUrl, createWaliToBendaharaWaUrl } from '../../utils/whatsappHelper';
 import {
   GraduationCap,
@@ -23,7 +23,8 @@ import {
   Megaphone,
   Info,
   MessageCircle,
-  Edit3
+  Edit3,
+  History
 } from 'lucide-react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 
@@ -108,6 +109,11 @@ export const WaliDashboard: React.FC<WaliDashboardProps> = ({
     { name: 'Sudah Dibayar', value: totalDibayar, color: '#059669' },
     { name: 'Kekurangan', value: totalKekurangan, color: '#e11d48' }
   ];
+
+  // Filter tunggakan historis aktif (status KURANG)
+  const activeHistoricalArrears = useMemo(() => {
+    return (sppSummary.historicalTransactions || []).filter(t => t.status === 'KURANG');
+  }, [sppSummary.historicalTransactions]);
 
   // Monthly breakdown for progress bar
   const formatRupiah = (v: number) => 'Rp ' + (v || 0).toLocaleString('id-ID');
@@ -417,6 +423,15 @@ export const WaliDashboard: React.FC<WaliDashboardProps> = ({
                   &bull;
                 </span>
               )}
+              {sppSummary.tunggakanHistoris > 0 && (
+                <span className="mr-2">
+                  Tunggakan Historis:{' '}
+                  <span className="font-extrabold text-rose-700">
+                    {formatRupiah(sppSummary.tunggakanHistoris)}
+                  </span>{' '}
+                  &bull;
+                </span>
+              )}
               Sisa kekurangan saat ini: <span className="font-extrabold text-rose-700">{formatRupiah(totalKekurangan)}</span>
             </div>
           </div>
@@ -467,6 +482,70 @@ export const WaliDashboard: React.FC<WaliDashboardProps> = ({
               </span>
             </div>
           </div>
+
+          {/* Kartu Ringkasan Tunggakan dari Periode Sebelumnya (HANYA muncul jika ada tunggakan historis aktif) */}
+          {sppSummary.tunggakanHistoris > 0 && activeHistoricalArrears.length > 0 && (
+            <div id="tunggakan-historis-wali-card" className="bg-rose-50/75 border border-rose-200/90 rounded-xl p-3.5 sm:p-4 shadow-2xs space-y-2.5">
+              <div className="flex items-center justify-between gap-2 border-b border-rose-200/70 pb-2">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-rose-100 text-rose-700">
+                    <History className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-xs sm:text-sm text-rose-950">
+                      Tunggakan dari Periode Sebelumnya
+                    </h4>
+                    <p className="text-[10px] sm:text-[11px] text-rose-700/80">
+                      Kewajiban SPP periode lampau sebelum sistem berjalan yang belum terselesaikan
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[10px] font-bold px-2.5 py-0.5 bg-rose-200/80 text-rose-900 rounded-full border border-rose-300 shrink-0">
+                  {activeHistoricalArrears.length} Catatan
+                </span>
+              </div>
+
+              {/* Daftar ringkas per baris: nama bulan + tahun, dan nominal tunggakan */}
+              <div className="space-y-1.5">
+                {activeHistoricalArrears.map((trx, idx) => {
+                  const sisa = trx.sisa !== undefined && trx.sisa !== null
+                    ? trx.sisa
+                    : Math.max(0, (trx.nominal_tagihan || 0) - (trx.nominal_bayar || 0));
+                  return (
+                    <div
+                      key={trx.id_transaksi || idx}
+                      className="flex items-center justify-between px-3 py-2 rounded-lg bg-white/95 border border-rose-200/80 text-xs"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
+                        <span className="font-bold text-slate-800">
+                          {trx.bulan || 'Tunggakan Lampau'}
+                        </span>
+                        {trx.keterangan && (
+                          <span className="text-[10px] text-slate-400 hidden sm:inline">
+                            ({trx.keterangan.replace(/^\[Tunggakan Historis\]\s*/, '') || 'Historis'})
+                          </span>
+                        )}
+                      </div>
+                      <div className="font-extrabold font-mono text-rose-700">
+                        {formatRupiah(sisa)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Total keseluruhan tunggakan historis di bagian bawah kartu, dicetak tebal */}
+              <div className="flex items-center justify-between pt-2 border-t border-rose-200/80 px-1 text-xs">
+                <span className="font-bold text-rose-900 uppercase tracking-wide text-[11px]">
+                  Total Tunggakan Periode Sebelumnya:
+                </span>
+                <span className="text-sm sm:text-base font-black font-mono text-rose-700">
+                  {formatRupiah(sppSummary.tunggakanHistoris)}
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Status SPP per Bulan dalam Tahun Ajaran */}
           <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80">
@@ -550,8 +629,15 @@ export const WaliDashboard: React.FC<WaliDashboardProps> = ({
                         )}
                       </td>
                       <td className="p-3">
-                        <div className="font-bold text-slate-900">{getStandardTransactionTitle(trx)}</div>
-                        {trx.keterangan && <div className="text-[10px] text-slate-500">{trx.keterangan}</div>}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-slate-900">{getStandardTransactionTitle(trx)}</span>
+                          {isHistoricalArrearsTrx(trx) && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300">
+                              [Tunggakan Historis]
+                            </span>
+                          )}
+                        </div>
+                        {trx.keterangan && <div className="text-[10px] text-slate-500 mt-0.5">{trx.keterangan}</div>}
                       </td>
                       <td className="p-3 text-right">{formatRupiah(trx.nominal_tagihan)}</td>
                       <td className="p-3 text-right font-extrabold text-emerald-800">{formatRupiah(trx.nominal_bayar)}</td>

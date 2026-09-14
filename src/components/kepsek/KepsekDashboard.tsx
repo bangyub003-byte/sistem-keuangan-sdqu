@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { Student, Transaction, KeuanganRecord, SchoolSetting } from '../../types';
 import { PrintMode } from '../PrintReportView';
-import { calculateAllStudentsSppSummary } from '../../utils/sppLogic';
-import { School, TrendingUp, AlertTriangle, Printer, Calendar, Wallet, Users, CreditCard, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
+import { calculateAllStudentsSppSummary, calculateStudentSppStatus } from '../../utils/sppLogic';
+import { SantriDetailModal } from '../bendahara/SantriDetailModal';
+import { School, TrendingUp, AlertTriangle, Printer, Calendar, Wallet, Users, CreditCard, ArrowDownLeft, ArrowUpRight, Eye, Search, FileText, History } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend, PieChart, Pie, Cell } from 'recharts';
 
 interface KepsekDashboardProps {
@@ -11,6 +12,8 @@ interface KepsekDashboardProps {
   keuangan: KeuanganRecord[];
   setting: SchoolSetting;
   onOpenPrintReport: (mode: PrintMode) => void;
+  onOpenKartuSpp?: (student: Student) => void;
+  onOpenReceipt?: (trx: Transaction) => void;
 }
 
 export const KepsekDashboard: React.FC<KepsekDashboardProps> = ({
@@ -18,12 +21,20 @@ export const KepsekDashboard: React.FC<KepsekDashboardProps> = ({
   transactions = [],
   keuangan = [],
   setting,
-  onOpenPrintReport
+  onOpenPrintReport,
+  onOpenKartuSpp,
+  onOpenReceipt
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'RINGKASAN' | 'REKAP_BAYAR' | 'REKAP_KAS' | 'LAPORAN_KAS'>('RINGKASAN');
+  const [activeSubTab, setActiveSubTab] = useState<'RINGKASAN' | 'DATA_SANTRI' | 'REKAP_BAYAR' | 'REKAP_KAS' | 'LAPORAN_KAS'>('RINGKASAN');
+  const [selectedDetailStudent, setSelectedDetailStudent] = useState<Student | null>(null);
   const [searchMurid, setSearchMurid] = useState('');
   const [filterKelas, setFilterKelas] = useState('');
   const [filterStatusBayar, setFilterStatusBayar] = useState('');
+
+  // Filter santri for DATA_SANTRI subtab
+  const [santriSearch, setSantriSearch] = useState('');
+  const [santriFilterKelas, setSantriFilterKelas] = useState('');
+  const [santriFilterStatus, setSantriFilterStatus] = useState<string>('ALL');
 
   const [kasTab, setKasTab] = useState<'SEMUA' | 'MASUK' | 'KELUAR'>('SEMUA');
   const [searchKas, setSearchKas] = useState('');
@@ -103,6 +114,44 @@ export const KepsekDashboard: React.FC<KepsekDashboardProps> = ({
 
   const availableClasses = Array.from(new Set(students.map(s => s.kelas))).filter(Boolean).sort();
 
+  // Summary of all students with individual details for DATA_SANTRI view
+  const santriListWithSpp = useMemo(() => {
+    return activeStudents.map(st => {
+      const summary = calculateStudentSppStatus(
+        st,
+        transactions,
+        setting.tahun_ajaran,
+        new Date(),
+        setting.spp_mulai_bulan,
+        setting.spp_mulai_tahun
+      );
+      return {
+        student: st,
+        summary
+      };
+    });
+  }, [activeStudents, transactions, setting.tahun_ajaran, setting.spp_mulai_bulan, setting.spp_mulai_tahun]);
+
+  const filteredSantriList = useMemo(() => {
+    return santriListWithSpp.filter(({ student, summary }) => {
+      const matchSearch = santriSearch
+        ? student.nama.toLowerCase().includes(santriSearch.toLowerCase()) || student.nisn.includes(santriSearch)
+        : true;
+      const matchKelas = !santriFilterKelas || student.kelas === santriFilterKelas;
+
+      let matchStatus = true;
+      if (santriFilterStatus === 'LUNAS') {
+        matchStatus = summary.unpaidDueMonths.length === 0 && summary.tunggakanHistoris === 0;
+      } else if (santriFilterStatus === 'MENUNGGAK') {
+        matchStatus = summary.unpaidDueMonths.length > 0;
+      } else if (santriFilterStatus === 'HISTORIS') {
+        matchStatus = summary.tunggakanHistoris > 0;
+      }
+
+      return matchSearch && matchKelas && matchStatus;
+    });
+  }, [santriListWithSpp, santriSearch, santriFilterKelas, santriFilterStatus]);
+
   return (
     <div className="space-y-6">
       {/* Header Banner */}
@@ -162,6 +211,14 @@ export const KepsekDashboard: React.FC<KepsekDashboardProps> = ({
           }`}
         >
           Grafik & Ringkasan
+        </button>
+        <button
+          onClick={() => setActiveSubTab('DATA_SANTRI')}
+          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+            activeSubTab === 'DATA_SANTRI' ? 'bg-amber-800 text-white shadow-xs' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          Status & Detail Santri
         </button>
         <button
           onClick={() => setActiveSubTab('REKAP_BAYAR')}
@@ -254,6 +311,152 @@ export const KepsekDashboard: React.FC<KepsekDashboardProps> = ({
         </div>
       )}
 
+      {/* View 1.5: Status & Detail Santri (Mode Baca Sah) */}
+      {activeSubTab === 'DATA_SANTRI' && (
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                <Users className="w-5 h-5 text-amber-800" />
+                Daftar & Status Kewajiban Santri
+              </h3>
+              <p className="text-xs text-slate-500">
+                Data kewajiban SPP dan catatan tunggakan historis per murid (Mode Baca Sah Kepala Sekolah)
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-lg">
+                Total: <strong className="text-slate-900">{filteredSantriList.length}</strong> Santri
+              </span>
+            </div>
+          </div>
+
+          {/* Filters */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={santriSearch}
+                onChange={(e) => setSantriSearch(e.target.value)}
+                placeholder="Cari nama santri / NISN..."
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-amber-800 focus:bg-white"
+              />
+            </div>
+            <select
+              value={santriFilterKelas}
+              onChange={(e) => setSantriFilterKelas(e.target.value)}
+              className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-amber-800 focus:bg-white"
+            >
+              <option value="">Semua Tingkat / Rombel Kelas</option>
+              {availableClasses.map(k => (
+                <option key={k} value={k}>{k}</option>
+              ))}
+            </select>
+            <select
+              value={santriFilterStatus}
+              onChange={(e) => setSantriFilterStatus(e.target.value)}
+              className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-amber-800 focus:bg-white"
+            >
+              <option value="ALL">Semua Status SPP</option>
+              <option value="LUNAS">Hanya Lunas Bersih</option>
+              <option value="MENUNGGAK">Menunggak Periode Berjalan</option>
+              <option value="HISTORIS">Memiliki Tunggakan Historis</option>
+            </select>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                  <th className="p-3 text-center w-10">No</th>
+                  <th className="p-3">Nama Santri & NISN</th>
+                  <th className="p-3">Kelas</th>
+                  <th className="p-3 text-right">Tarif SPP</th>
+                  <th className="p-3 text-center">Status Berjalan</th>
+                  <th className="p-3 text-right">Tunggakan Historis</th>
+                  <th className="p-3 text-right">Total Tunggakan</th>
+                  <th className="p-3 text-center w-24">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-150">
+                {filteredSantriList.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="p-6 text-center text-slate-400">
+                      Tidak ada santri yang sesuai filter.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredSantriList.map(({ student, summary }, idx) => {
+                    const isMenunggakBerjalan = summary.unpaidDueMonths.length > 0;
+                    const hasHistoris = summary.tunggakanHistoris > 0;
+                    return (
+                      <tr key={student.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-3 text-center text-slate-400">{idx + 1}</td>
+                        <td className="p-3">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedDetailStudent(student)}
+                            className="font-bold text-slate-900 hover:text-amber-900 hover:underline flex items-center gap-1.5 cursor-pointer text-left"
+                            title="Buka Rincian Detail Santri"
+                          >
+                            <span>{student.nama}</span>
+                            <Eye className="w-3 h-3 text-slate-400 hover:text-amber-800" />
+                          </button>
+                          <div className="text-[10px] text-slate-400 font-mono mt-0.5">NISN: {student.nisn || '-'}</div>
+                        </td>
+                        <td className="p-3">
+                          <span className="font-semibold text-slate-700">{student.kelas}</span>
+                          <div className="text-[10px] text-slate-400">{student.kategori_spp || 'Reguler'}</div>
+                        </td>
+                        <td className="p-3 text-right text-slate-600 font-medium">
+                          {formatRupiah(student.nominal_spp_custom || setting.nominal_spp_default)}
+                        </td>
+                        <td className="p-3 text-center">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            !isMenunggakBerjalan
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-rose-100 text-rose-800'
+                          }`}>
+                            {!isMenunggakBerjalan ? 'LUNAS' : `${summary.unpaidDueMonths.length} Bln Menunggak`}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right">
+                          {hasHistoris ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                              <History className="w-3 h-3 text-amber-700" />
+                              {formatRupiah(summary.tunggakanHistoris)}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-[11px]">-</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-right font-black text-rose-700">
+                          {summary.totalTunggakan > 0 ? formatRupiah(summary.totalTunggakan) : (
+                            <span className="text-emerald-700 font-bold">Lunas</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedDetailStudent(student)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-lg transition-colors cursor-pointer shadow-2xs"
+                            title="Lihat Detail Murid (Mode Baca Sah)"
+                          >
+                            <Eye className="w-3 h-3" />
+                            <span>Detail</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* View 2: Rekap Pembayaran */}
       {activeSubTab === 'REKAP_BAYAR' && (
         <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
@@ -331,7 +534,20 @@ export const KepsekDashboard: React.FC<KepsekDashboardProps> = ({
                   filteredTransactions.map(trx => (
                     <tr key={trx.id_transaksi} className="hover:bg-slate-50">
                       <td className="p-3 text-slate-600">{trx.tanggal}</td>
-                      <td className="p-3 font-bold text-slate-900">{trx.nama_siswa}</td>
+                      <td className="p-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const found = students.find(s => (trx.nisn && s.nisn === trx.nisn) || s.nama.toLowerCase() === trx.nama_siswa.toLowerCase());
+                            if (found) setSelectedDetailStudent(found);
+                          }}
+                          className="font-bold text-slate-900 hover:text-amber-800 hover:underline flex items-center gap-1.5 cursor-pointer text-left"
+                          title="Lihat Detail Santri (Mode Baca Sah)"
+                        >
+                          <span>{trx.nama_siswa}</span>
+                          <Eye className="w-3 h-3 text-slate-400 hover:text-amber-800" />
+                        </button>
+                      </td>
                       <td className="p-3 text-slate-600">{trx.kelas}</td>
                       <td className="p-3">{trx.jenis}</td>
                       <td className="p-3 text-right font-extrabold text-emerald-800">{formatRupiah(trx.nominal_bayar)}</td>
@@ -530,6 +746,20 @@ export const KepsekDashboard: React.FC<KepsekDashboardProps> = ({
             </button>
           </div>
         </div>
+      )}
+
+      {/* Modal Detail Murid untuk Kepala Sekolah (Mode Baca Sah) */}
+      {selectedDetailStudent && (
+        <SantriDetailModal
+          student={selectedDetailStudent}
+          transactions={transactions}
+          setting={setting}
+          onClose={() => setSelectedDetailStudent(null)}
+          isReadOnly={true}
+          operatorName={setting.nama_kepsek || 'Kepala Sekolah'}
+          onOpenKartuSpp={onOpenKartuSpp}
+          onOpenReceipt={onOpenReceipt}
+        />
       )}
     </div>
   );

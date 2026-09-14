@@ -16,6 +16,9 @@ interface SantriMenuProps {
   onNavigateToPayment?: (st: Student) => void;
   onOpenReceipt?: (trx: Transaction) => void;
   onOpenKartuSpp?: (st: Student) => void;
+  operatorName?: string;
+  onProcessPayment?: (data: any) => Transaction;
+  onVerifyPaymentStatus?: (trxId: string, newStatus: 'LUNAS' | 'KURANG' | 'CANCEL', paidAmount?: number, reason?: string) => void;
 }
 
 export const SantriMenu: React.FC<SantriMenuProps> = ({
@@ -29,7 +32,10 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
   onImportStudents,
   onNavigateToPayment,
   onOpenReceipt,
-  onOpenKartuSpp
+  onOpenKartuSpp,
+  operatorName,
+  onProcessPayment,
+  onVerifyPaymentStatus
 }) => {
   const handleBulk = onImportStudents || onBulkImport;
   const [searchTerm, setSearchTerm] = useState('');
@@ -791,6 +797,9 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
           onNavigateToPayment={onNavigateToPayment}
           onOpenReceipt={onOpenReceipt}
           onOpenKartuSpp={onOpenKartuSpp}
+          operatorName={operatorName}
+          onProcessPayment={onProcessPayment}
+          onVerifyPaymentStatus={onVerifyPaymentStatus}
         />
       )}
     </div>

@@ -33,9 +33,12 @@ export interface StudentSppSummary {
   unpaidDueMonths: StudentSppMonthStatus[]; // due months that are KURANG or BELUM_BAYAR
   totalTagihanDue: number;
   totalDibayarDue: number;
-  totalTunggakanSpp: number;
-  isLunas: boolean; // unpaidDueMonths.length === 0 && totalTunggakanSpp === 0
-  statusLabel: string; // "Lunas sampai bulan berjalan" OR "Menunggak X bulan (Agustus, September)"
+  totalTunggakanSpp: number; // Tunggakan bulan berjalan (periode 12 bulan)
+  tunggakanHistoris: number; // Tunggakan dari catatan manual/historis
+  totalTunggakanKeseluruhan: number; // totalTunggakanSpp + tunggakanHistoris
+  historicalTransactions: Transaction[]; // Transaksi berlabel [Tunggakan Historis]
+  isLunas: boolean; // unpaidDueMonths.length === 0 && grandTotalSisa === 0
+  statusLabel: string; // "Lunas sampai bulan berjalan" OR "Menunggak X bulan..."
   monthsNunggakList: string[]; // e.g. ["Agustus", "September"]
   monthsNunggakFullLabels: string[]; // e.g. ["Agustus 2026", "September 2026"]
   // Non-SPP transactions summary for comprehensive financial reporting
@@ -190,12 +193,29 @@ export function getStandardTransactionTitle(trx: {
 }
 
 /**
+ * Checks whether a transaction is a historical arrears entry (pencatatan tunggakan historis).
+ * Marked with prefix [Tunggakan Historis] or specific category/notes.
+ */
+export function isHistoricalArrearsTrx(t?: { jenis?: string; keterangan?: string; kategori?: string } | null): boolean {
+  if (!t) return false;
+  const ket = (t.keterangan || '').toLowerCase();
+  const jenis = (t.jenis || '').toLowerCase();
+  const kat = (t.kategori || '').toLowerCase();
+  return ket.includes('[tunggakan historis]') ||
+         ket.includes('tunggakan historis') ||
+         jenis.includes('tunggakan historis') ||
+         kat.includes('tunggakan historis');
+}
+
+/**
  * Checks whether a given transaction matches a specific academic month.
  * Supports exact month name, abbreviations, multi-month strings (e.g. "Oktober, November, Desember 2026"),
  * and range strings (e.g. "Oktober - Desember 2026" or "Oktober s/d Desember 2026").
  */
 export function matchesMonth(t: Transaction, month: AcademicMonth): boolean {
   if (t.status === 'CANCEL') return false;
+  // Entri historis TIDAK BOLEH masuk ke perhitungan 12 bulan dropdown Periode SPP yang sudah ada
+  if (isHistoricalArrearsTrx(t)) return false;
 
   const isSpp = t.kategori === 'SPP' ||
                 t.jenis.toLowerCase().includes('spp') ||
@@ -377,14 +397,27 @@ export function calculateStudentSppStatus(
     .reduce((acc, m) => acc + (m.tagihan || monthlyFee), 0);
   // Total Pembayaran SPP Masuk: SEMUA pembayaran SPP yang sudah masuk di sistem
   const totalDibayarDue = allMonths.reduce((acc, m) => acc + m.dibayar, 0);
-  // Total Tunggakan SPP: hanya bulan jatuh tempo yang menunggak
+  // Total Tunggakan SPP Periode Berjalan: hanya bulan jatuh tempo yang menunggak
   const totalTunggakanSpp = unpaidDueMonths.reduce((acc, m) => acc + m.sisa, 0);
 
   const monthsNunggakList = unpaidDueMonths.map(m => m.monthName);
   const monthsNunggakFullLabels = unpaidDueMonths.map(m => m.label);
 
-  // Non-SPP transactions for this student (pastikan transaksi SPP tidak terhitung ke pos non-SPP)
+  // 1. Perhitungan Catatan Tunggakan Historis / Manual
+  const historicalTransactions = studentTransactions.filter(t => isHistoricalArrearsTrx(t));
+  const activeHistorical = historicalTransactions.filter(t => t.status === 'KURANG');
+  const tunggakanHistoris = activeHistorical.reduce((sum, t) => {
+    if (t.sisa !== undefined && t.sisa !== null) return sum + t.sisa;
+    return sum + Math.max(0, (t.nominal_tagihan || 0) - (t.nominal_bayar || 0));
+  }, 0);
+  const totalHistorisTagihan = historicalTransactions.reduce((sum, t) => sum + (t.nominal_tagihan || 0), 0);
+  const totalHistorisDibayar = historicalTransactions.reduce((sum, t) => sum + (t.nominal_bayar || 0), 0);
+
+  const totalTunggakanKeseluruhan = totalTunggakanSpp + tunggakanHistoris;
+
+  // Non-SPP transactions for this student (pastikan transaksi SPP dan transaksi historis tidak terhitung ke pos non-SPP)
   const isSppTrx = (t: Transaction) =>
+    isHistoricalArrearsTrx(t) ||
     t.kategori === 'SPP' ||
     (t.jenis || '').toLowerCase().includes('spp') ||
     Boolean(t.bulan);
@@ -394,11 +427,11 @@ export function calculateStudentSppStatus(
   const nonSppDibayar = nonSppTrxs.reduce((sum, t) => sum + (t.nominal_bayar || 0), 0);
   const nonSppSisa = nonSppTrxs.filter(t => t.status === 'KURANG').reduce((sum, t) => sum + (t.sisa || 0), 0);
 
-  const grandTotalTagihan = totalTagihanDue + nonSppTagihan;
-  const grandTotalDibayar = totalDibayarDue + nonSppDibayar;
-  const grandTotalSisa = totalTunggakanSpp + nonSppSisa;
+  const grandTotalTagihan = totalTagihanDue + totalHistorisTagihan + nonSppTagihan;
+  const grandTotalDibayar = totalDibayarDue + totalHistorisDibayar + nonSppDibayar;
+  const grandTotalSisa = totalTunggakanKeseluruhan + nonSppSisa;
 
-  // Sinkronisasi mutlak: jika tidak ada tunggakan jatuh tempo dan tidak ada sisa non-SPP, maka LUNAS
+  // Sinkronisasi mutlak: jika tidak ada tunggakan jatuh tempo dan tidak ada sisa non-SPP atau tunggakan historis, maka LUNAS
   const isLunas = unpaidDueMonths.length === 0 && grandTotalSisa === 0;
   let statusLabel = '';
   if (isLunas) {
@@ -409,9 +442,13 @@ export function calculateStudentSppStatus(
     } else {
       statusLabel = 'Lunas sampai bulan berjalan';
     }
+  } else if (unpaidDueMonths.length > 0 && tunggakanHistoris > 0) {
+    statusLabel = `Menunggak ${unpaidDueMonths.length} bln + Tunggakan Historis`;
   } else if (unpaidDueMonths.length > 0) {
     const count = unpaidDueMonths.length;
     statusLabel = `Menunggak ${count} bulan (${monthsNunggakList.join(', ')})`;
+  } else if (tunggakanHistoris > 0) {
+    statusLabel = `Ada Tunggakan Historis (Rp ${tunggakanHistoris.toLocaleString('id-ID')})`;
   } else if (nonSppSisa > 0) {
     statusLabel = `Tagihan Lain Belum Lunas (Rp ${nonSppSisa.toLocaleString('id-ID')})`;
   } else {
@@ -428,6 +465,9 @@ export function calculateStudentSppStatus(
     totalTagihanDue,
     totalDibayarDue,
     totalTunggakanSpp,
+    tunggakanHistoris,
+    totalTunggakanKeseluruhan,
+    historicalTransactions,
     isLunas,
     statusLabel,
     monthsNunggakList,
@@ -467,7 +507,8 @@ export function calculateAllStudentsSppSummary(
 
   const totalTunggakanAll = summaries.reduce((acc, s) => acc + s.grandTotalSisa, 0);
   const totalTunggakanSppOnly = summaries.reduce((acc, s) => acc + s.totalTunggakanSpp, 0);
-  const totalPembayaranSppMasuk = summaries.reduce((acc, s) => acc + s.totalDibayarDue, 0);
+  const totalTunggakanHistorisOnly = summaries.reduce((acc, s) => acc + s.tunggakanHistoris, 0);
+  const totalPembayaranSppMasuk = summaries.reduce((acc, s) => acc + s.totalDibayarDue + (s.historicalTransactions?.reduce((hSum, ht) => hSum + (ht.nominal_bayar || 0), 0) || 0), 0);
 
   return {
     summaries,
@@ -477,6 +518,7 @@ export function calculateAllStudentsSppSummary(
     countSantriLunas: studentsLunas.length,
     totalTunggakanAll,
     totalTunggakanSppOnly,
+    totalTunggakanHistorisOnly,
     totalPembayaranSppMasuk
   };
 }
