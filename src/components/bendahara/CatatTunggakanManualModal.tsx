@@ -12,7 +12,8 @@ import {
   ArrowRight,
   Check,
   Calendar,
-  FileText
+  FileText,
+  Star
 } from 'lucide-react';
 import { INDONESIAN_MONTHS } from '../../utils/sppLogic';
 
@@ -90,6 +91,7 @@ export const CatatTunggakanManualModal: React.FC<CatatTunggakanManualModalProps>
   const defaultNominal = setting.spp_default_nominal || 150000;
   const [nominalDefaultInput, setNominalDefaultInput] = useState<number>(defaultNominal);
   const [items, setItems] = useState<StudentRowItem[]>([]);
+  const [tableSearch, setTableSearch] = useState<string>('');
 
   // 4. Confirmation View State
   const [showConfirmation, setShowConfirmation] = useState<boolean>(false);
@@ -134,58 +136,79 @@ export const CatatTunggakanManualModal: React.FC<CatatTunggakanManualModalProps>
     }
   }, [dynamicClasses, initialStudent, selectedClass]);
 
+  // Reset table search when modal opens/closes
+  useEffect(() => {
+    if (!isOpen) {
+      setTableSearch('');
+    }
+  }, [isOpen]);
+
+  const prevScopeRef = React.useRef<string>(scope);
+  const prevClassRef = React.useRef<string>(selectedClass);
+  const prevIsOpenRef = React.useRef<boolean>(isOpen);
+
   // Initialize or update items when scope or target selection changes
   useEffect(() => {
     if (!isOpen) return;
 
+    const isScopeChanged = prevScopeRef.current !== scope;
+    const isClassChanged = prevClassRef.current !== selectedClass;
+    const isJustOpened = !prevIsOpenRef.current && isOpen;
+
+    prevScopeRef.current = scope;
+    prevClassRef.current = selectedClass;
+    prevIsOpenRef.current = isOpen;
+
     if (scope === 'MURID') {
-      // If initialStudent is provided and items are empty, pre-select that student
-      if (initialStudent) {
-        const row: StudentRowItem = {
-          student: initialStudent,
-          nominal: nominalDefaultInput,
-          included: true
-        };
-        setItems([row]);
-      } else {
-        // Keep existing items or start empty
-        if (items.length === 0 && activeStudents.length > 0) {
-          // select first student as sample
-          setItems([{
-            student: activeStudents[0],
-            nominal: nominalDefaultInput,
-            included: true
-          }]);
-        }
-      }
+      setItems(prevItems => {
+        return activeStudents.map(s => {
+          const isInitial = initialStudent ? s.id_siswa === initialStudent.id_siswa : false;
+          const existing = prevItems.find(i => i.student.id_siswa === s.id_siswa);
+          const shouldBeIncluded = (isScopeChanged || isJustOpened)
+            ? isInitial
+            : (existing ? existing.included : isInitial);
+          return {
+            student: s,
+            nominal: existing ? existing.nominal : nominalDefaultInput,
+            included: shouldBeIncluded
+          };
+        });
+      });
     } else if (scope === 'KELAS') {
       if (selectedClass) {
         const classStudents = activeStudents.filter(
           s => (s.kelas || '').trim().toLowerCase() === selectedClass.trim().toLowerCase()
         );
-        const rows: StudentRowItem[] = classStudents.map(s => {
-          // preserve nominal if already edited
-          const existing = items.find(i => i.student.id_siswa === s.id_siswa);
+        setItems(prevItems => {
+          return classStudents.map(s => {
+            const existing = prevItems.find(i => i.student.id_siswa === s.id_siswa);
+            const shouldBeIncluded = (isScopeChanged || isClassChanged || isJustOpened)
+              ? true
+              : (existing ? existing.included : true);
+            return {
+              student: s,
+              nominal: existing ? existing.nominal : nominalDefaultInput,
+              included: shouldBeIncluded
+            };
+          });
+        });
+      }
+    } else if (scope === 'SEMUA') {
+      setItems(prevItems => {
+        return activeStudents.map(s => {
+          const existing = prevItems.find(i => i.student.id_siswa === s.id_siswa);
+          const shouldBeIncluded = (isScopeChanged || isJustOpened)
+            ? true
+            : (existing ? existing.included : true);
           return {
             student: s,
             nominal: existing ? existing.nominal : nominalDefaultInput,
-            included: existing ? existing.included : true
+            included: shouldBeIncluded
           };
         });
-        setItems(rows);
-      }
-    } else if (scope === 'SEMUA') {
-      const rows: StudentRowItem[] = activeStudents.map(s => {
-        const existing = items.find(i => i.student.id_siswa === s.id_siswa);
-        return {
-          student: s,
-          nominal: existing ? existing.nominal : nominalDefaultInput,
-          included: existing ? existing.included : true
-        };
       });
-      setItems(rows);
     }
-  }, [scope, selectedClass, isOpen]);
+  }, [scope, selectedClass, isOpen, activeStudents, initialStudent, nominalDefaultInput]);
 
   // Apply default nominal to all currently included rows
   const handleApplyDefaultNominal = () => {
@@ -198,21 +221,7 @@ export const CatatTunggakanManualModal: React.FC<CatatTunggakanManualModalProps>
 
   // Toggle student selection in 'MURID' scope
   const handleToggleSpecificStudent = (student: Student) => {
-    setItems(prev => {
-      const exists = prev.find(i => i.student.id_siswa === student.id_siswa);
-      if (exists) {
-        return prev.filter(i => i.student.id_siswa !== student.id_siswa);
-      } else {
-        return [
-          ...prev,
-          {
-            student,
-            nominal: nominalDefaultInput,
-            included: true
-          }
-        ];
-      }
-    });
+    handleToggleIncludeItem(student.id_siswa);
   };
 
   // Update nominal for a specific student
@@ -247,6 +256,18 @@ export const CatatTunggakanManualModal: React.FC<CatatTunggakanManualModalProps>
         (s.nik || '').toLowerCase().includes(q)
     );
   }, [activeStudents, studentSearch]);
+
+  // Filtered items in Section 3 Table (Pencarian Rincian Murid & Nominal)
+  const displayedItems = useMemo(() => {
+    if (!tableSearch.trim()) return items;
+    const q = tableSearch.toLowerCase().trim();
+    return items.filter(
+      item =>
+        item.student.nama.toLowerCase().includes(q) ||
+        (item.student.nisn || '').toLowerCase().includes(q) ||
+        (item.student.kelas || '').toLowerCase().includes(q)
+    );
+  }, [items, tableSearch]);
 
   // Final effective period string
   const effectivePeriode = useCustomPeriode
@@ -535,7 +556,7 @@ export const CatatTunggakanManualModal: React.FC<CatatTunggakanManualModalProps>
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-bold text-slate-700">Pilih Santri Sasaran:</span>
                       <span className="text-[11px] font-bold text-amber-800">
-                        {items.length} santri dipilih
+                        {items.filter(i => i.included).length} santri dipilih
                       </span>
                     </div>
 
@@ -555,7 +576,7 @@ export const CatatTunggakanManualModal: React.FC<CatatTunggakanManualModalProps>
                         <div className="p-3 text-center text-slate-400">Tidak ada data santri</div>
                       ) : (
                         searchFilteredStudents.map(st => {
-                          const isSelected = items.some(i => i.student.id_siswa === st.id_siswa);
+                          const isSelected = items.some(i => i.student.id_siswa === st.id_siswa && i.included);
                           return (
                             <div
                               key={st.id_siswa}
@@ -624,6 +645,28 @@ export const CatatTunggakanManualModal: React.FC<CatatTunggakanManualModalProps>
                   Gunakan kolom <strong>Nominal Tunggakan</strong> pada tabel di bawah untuk menyesuaikan harga per-anak jika ada murid yang mendapat nominal berbeda (diskon/subsidi/beda paket).
                 </p>
 
+                {/* Kolom Pencarian Cepat di Tabel Rincian Murid */}
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={tableSearch}
+                    onChange={(e) => setTableSearch(e.target.value)}
+                    placeholder="Cari nama atau NISN untuk ubah nominal khusus..."
+                    className="w-full pl-8.5 pr-8 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all shadow-2xs"
+                  />
+                  {tableSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setTableSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer"
+                      title="Bersihkan pencarian"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
                 {/* Table */}
                 <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
                   <div className="max-h-60 overflow-y-auto">
@@ -644,50 +687,88 @@ export const CatatTunggakanManualModal: React.FC<CatatTunggakanManualModalProps>
                               Belum ada murid yang dipilih dalam cakupan ini.
                             </td>
                           </tr>
+                        ) : displayedItems.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="p-6 text-center text-slate-500">
+                              Tidak ada santri yang cocok dengan pencarian "{tableSearch}".
+                              <button
+                                type="button"
+                                onClick={() => setTableSearch('')}
+                                className="ml-2 font-bold text-amber-700 hover:underline cursor-pointer"
+                              >
+                                Hapus Pencarian
+                              </button>
+                            </td>
+                          </tr>
                         ) : (
-                          items.map((item, idx) => (
-                            <tr
-                              key={item.student.id_siswa}
-                              className={`hover:bg-slate-50 transition-colors ${
-                                !item.included ? 'opacity-40 bg-slate-100' : ''
-                              }`}
-                            >
-                              <td className="p-2.5 text-center">
-                                <input
-                                  type="checkbox"
-                                  checked={item.included}
-                                  onChange={() => handleToggleIncludeItem(item.student.id_siswa)}
-                                  className="rounded text-amber-600 focus:ring-amber-500 w-3.5 h-3.5 cursor-pointer"
-                                />
-                              </td>
-                              <td className="p-2.5 text-center text-slate-400">{idx + 1}</td>
-                              <td className="p-2.5">
-                                <div className="font-bold text-slate-900">{item.student.nama}</div>
-                                <div className="text-[10px] text-slate-500 font-mono">
-                                  NISN: {item.student.nisn || '-'}
-                                </div>
-                              </td>
-                              <td className="p-2.5 font-semibold text-slate-700">
-                                {item.student.kelas}
-                              </td>
-                              <td className="p-2.5 text-right">
-                                <div className="inline-flex items-center gap-1 justify-end">
-                                  <span className="text-[10px] text-slate-400 font-semibold">Rp</span>
+                          displayedItems.map((item, idx) => {
+                            const isDifferent = item.nominal !== nominalDefaultInput;
+                            const originalIndex = items.findIndex(i => i.student.id_siswa === item.student.id_siswa) + 1;
+                            return (
+                              <tr
+                                key={item.student.id_siswa}
+                                className={`hover:bg-slate-50 transition-colors ${
+                                  !item.included
+                                    ? 'opacity-40 bg-slate-100'
+                                    : isDifferent
+                                    ? 'bg-amber-50/40'
+                                    : ''
+                                }`}
+                              >
+                                <td className="p-2.5 text-center">
                                   <input
-                                    type="number"
-                                    min={0}
-                                    step={1000}
-                                    disabled={!item.included}
-                                    value={item.nominal}
-                                    onChange={(e) =>
-                                      handleUpdateItemNominal(item.student.id_siswa, Number(e.target.value))
-                                    }
-                                    className="w-32 px-2 py-1 bg-white border border-slate-300 rounded-lg text-right font-mono font-bold text-slate-900 text-xs focus:ring-2 focus:ring-amber-500 disabled:bg-slate-100"
+                                    type="checkbox"
+                                    checked={item.included}
+                                    onChange={() => handleToggleIncludeItem(item.student.id_siswa)}
+                                    className="rounded text-amber-600 focus:ring-amber-500 w-3.5 h-3.5 cursor-pointer"
                                   />
-                                </div>
-                              </td>
-                            </tr>
-                          ))
+                                </td>
+                                <td className="p-2.5 text-center text-slate-400 font-mono text-[11px]">
+                                  {originalIndex > 0 ? originalIndex : idx + 1}
+                                </td>
+                                <td className="p-2.5">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-bold text-slate-900">{item.student.nama}</span>
+                                    {isDifferent && (
+                                      <span
+                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs shrink-0"
+                                        title={`Nominal khusus: ${formatRupiah(item.nominal)} (Default: ${formatRupiah(nominalDefaultInput)})`}
+                                      >
+                                        <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-600" />
+                                        <span>Beda dari default</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 font-mono">
+                                    NISN: {item.student.nisn || '-'}
+                                  </div>
+                                </td>
+                                <td className="p-2.5 font-semibold text-slate-700">
+                                  {item.student.kelas}
+                                </td>
+                                <td className="p-2.5 text-right">
+                                  <div className="inline-flex items-center gap-1 justify-end">
+                                    <span className="text-[10px] text-slate-400 font-semibold">Rp</span>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      step={1000}
+                                      disabled={!item.included}
+                                      value={item.nominal}
+                                      onChange={(e) =>
+                                        handleUpdateItemNominal(item.student.id_siswa, Number(e.target.value))
+                                      }
+                                      className={`w-32 px-2 py-1 bg-white border rounded-lg text-right font-mono font-bold text-xs focus:ring-2 focus:ring-amber-500 disabled:bg-slate-100 ${
+                                        isDifferent
+                                          ? 'border-amber-400 bg-amber-50/60 text-amber-950 font-extrabold'
+                                          : 'border-slate-300 text-slate-900'
+                                      }`}
+                                    />
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
                         )}
                       </tbody>
                     </table>
