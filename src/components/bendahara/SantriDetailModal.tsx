@@ -26,9 +26,11 @@ import {
   Plus,
   CheckCircle
 } from 'lucide-react';
+import { CatatTunggakanManualModal } from './CatatTunggakanManualModal';
 
 interface SantriDetailModalProps {
   student: Student;
+  students?: Student[];
   transactions: Transaction[];
   setting: SchoolSetting;
   onClose: () => void;
@@ -39,11 +41,13 @@ interface SantriDetailModalProps {
   operatorName?: string;
   onProcessPayment?: (data: any) => Transaction;
   onVerifyPaymentStatus?: (trxId: string, newStatus: 'LUNAS' | 'KURANG' | 'CANCEL', paidAmount?: number, reason?: string) => void;
+  onBatchRecordManualArrears?: (records: any[]) => Promise<any>;
   isReadOnly?: boolean;
 }
 
 export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
   student,
+  students = [],
   transactions,
   setting,
   onClose,
@@ -54,6 +58,7 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
   operatorName,
   onProcessPayment,
   onVerifyPaymentStatus,
+  onBatchRecordManualArrears,
   isReadOnly = false
 }) => {
   const [activeTab, setActiveTab] = useState<'REKAP' | 'TRANSAKSI' | 'EDIT_SPP' | 'EDIT_IDENTITAS'>('REKAP');
@@ -128,7 +133,8 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
 
   const tunggakanWaUrl = createTunggakanReminderWaUrl(setting, student, sppSummary);
 
-  // Historical Arrears Recording State
+  // Historical / Manual Arrears Recording State
+  const [showManualArrearsModal, setShowManualArrearsModal] = useState(false);
   const [showHistorisModal, setShowHistorisModal] = useState(false);
   const [bulanHistoris, setBulanHistoris] = useState<string>('Januari');
   const [tahunHistoris, setTahunHistoris] = useState<number>(new Date().getFullYear() - 1);
@@ -480,12 +486,12 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => setShowHistorisModal(true)}
+                    onClick={() => setShowManualArrearsModal(true)}
                     className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-amber-600 text-white rounded-lg text-xs font-bold hover:bg-amber-700 transition-colors shadow-xs cursor-pointer"
-                    title="Catat tunggakan manual/historis dari bulan/tahun lampau sebelum aplikasi digunakan"
+                    title="Catat tunggakan manual/khusus (Buku, Iuran, SPP Lampau) dengan jenis bebas dan nominal fleksibel"
                   >
                     <History className="w-3.5 h-3.5" />
-                    Catat Tunggakan Historis
+                    Catat Tunggakan
                   </button>
 
                   {onOpenKartuSpp && (
@@ -532,7 +538,7 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
                 )
               )}
 
-              {/* Kartu Ringkasan Tunggakan dari Periode Sebelumnya (HANYA muncul jika ada tunggakan historis aktif) */}
+              {/* Kartu Ringkasan Tunggakan dari Periode Sebelumnya (HANYA muncul jika ada tunggakan historis/manual aktif) */}
               {sppSummary.tunggakanHistoris > 0 && activeHistoricalArrears.length > 0 && (
                 <div id="tunggakan-historis-summary-card" className="bg-rose-50/75 border border-rose-200/90 rounded-xl p-3.5 sm:p-4 shadow-2xs space-y-2.5">
                   <div className="flex items-center justify-between gap-2 border-b border-rose-200/70 pb-2">
@@ -542,10 +548,10 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
                       </div>
                       <div>
                         <h4 className="font-extrabold text-xs sm:text-sm text-rose-950">
-                          Tunggakan dari Periode Sebelumnya
+                          Tunggakan dari Periode Sebelumnya / Manual
                         </h4>
                         <p className="text-[10px] sm:text-[11px] text-rose-700/80">
-                          Kewajiban SPP periode lampau sebelum sistem berjalan yang belum terselesaikan
+                          Tunggakan SPP lampau atau tagihan khusus (Buku, Iuran, dll) yang belum terselesaikan
                         </p>
                       </div>
                     </div>
@@ -554,29 +560,37 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
                     </span>
                   </div>
 
-                  {/* Daftar ringkas per baris: nama bulan + tahun, dan nominal tunggakan */}
+                  {/* Daftar ringkas per baris: nama jenis + bulan/tahun, dan nominal tunggakan */}
                   <div className="space-y-1.5">
                     {activeHistoricalArrears.map((trx, idx) => {
                       const sisa = trx.sisa !== undefined && trx.sisa !== null
                         ? trx.sisa
                         : Math.max(0, (trx.nominal_tagihan || 0) - (trx.nominal_bayar || 0));
+                      const cleanKet = (trx.keterangan || '').replace(/^\[(Tunggakan Historis|Tunggakan Manual)\]\s*/i, '');
                       return (
                         <div
                           key={trx.id_transaksi || idx}
                           className="flex items-center justify-between px-3 py-2 rounded-lg bg-white/95 border border-rose-200/80 text-xs"
                         >
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 min-w-0 pr-2">
                             <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
-                            <span className="font-bold text-slate-800">
-                              {trx.bulan || 'Tunggakan Lampau'}
-                            </span>
-                            {trx.keterangan && (
-                              <span className="text-[10px] text-slate-400 hidden sm:inline">
-                                ({trx.keterangan.replace(/^\[Tunggakan Historis\]\s*/, '') || 'Historis'})
+                            <div className="truncate">
+                              <span className="font-bold text-slate-800">
+                                {trx.jenis || 'Tunggakan'}
                               </span>
-                            )}
+                              {trx.bulan && (
+                                <span className="text-slate-600 font-medium ml-1.5">
+                                  ({trx.bulan})
+                                </span>
+                              )}
+                              {cleanKet && (
+                                <span className="text-[10px] text-slate-400 hidden sm:inline ml-1.5 truncate">
+                                  - {cleanKet}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <div className="font-extrabold font-mono text-rose-700">
+                          <div className="font-extrabold font-mono text-rose-700 shrink-0">
                             {formatRupiah(sisa)}
                           </div>
                         </div>
@@ -651,22 +665,22 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
                 </div>
               </div>
 
-              {/* Rincian Catatan Tunggakan Historis / Lampau */}
+              {/* Rincian Catatan Tunggakan Historis / Lampau / Manual */}
               <div className="border border-amber-200/90 bg-amber-50/25 rounded-xl p-4 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
                       <History className="w-4 h-4 text-amber-600" />
-                      Catatan Tunggakan Historis / Lampau
+                      Catatan Tunggakan Historis / Manual
                     </h4>
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      Pencatatan tunggakan manual dari bulan/tahun lampau di luar periode SPP berjalan (sebelum aplikasi digunakan / koreksi buku lama).
+                      Pencatatan tunggakan manual non-SPP (Buku Paket, Iuran Wisuda, dll) maupun periode SPP lampau sebelum aplikasi digunakan.
                     </p>
                   </div>
                   {!isReadOnly && (
                     <button
                       type="button"
-                      onClick={() => setShowHistorisModal(true)}
+                      onClick={() => setShowManualArrearsModal(true)}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-bold hover:bg-amber-700 transition-colors shadow-2xs cursor-pointer self-start sm:self-auto"
                     >
                       <Plus className="w-3.5 h-3.5" />
@@ -677,7 +691,7 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
 
                 {sppSummary.historicalTransactions.length === 0 ? (
                   <div className="bg-white/80 border border-dashed border-amber-200 rounded-lg p-5 text-center text-slate-400 text-xs">
-                    Belum ada catatan tunggakan historis untuk murid ini.{!isReadOnly && ' Klik tombol di atas jika ada tunggakan lampau yang perlu dicatat.'}
+                    Belum ada catatan tunggakan historis/manual untuk murid ini.{!isReadOnly && ' Klik tombol di atas jika ada tunggakan khusus atau lampau yang perlu dicatat.'}
                   </div>
                 ) : (
                   <div className="border border-amber-200 rounded-lg overflow-hidden bg-white shadow-2xs">
@@ -685,7 +699,7 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
                       <thead className="bg-amber-50/80 text-amber-950 font-bold border-b border-amber-200">
                         <tr>
                           <th className="p-2.5 text-center w-8">No</th>
-                          <th className="p-2.5">Bulan & Tahun</th>
+                          <th className="p-2.5">Jenis & Periode</th>
                           <th className="p-2.5 text-right">Tagihan</th>
                           <th className="p-2.5 text-right">Sudah Dibayar</th>
                           <th className="p-2.5 text-right">Sisa Tunggakan</th>
@@ -702,7 +716,8 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
                             <tr key={ht.id_transaksi} className="hover:bg-amber-50/30">
                               <td className="p-2.5 text-center text-slate-400">{idx + 1}</td>
                               <td className="p-2.5 font-bold text-slate-900 whitespace-nowrap">
-                                {ht.bulan || 'Historis'}
+                                <div className="font-extrabold text-slate-900">{ht.jenis || 'Tunggakan'}</div>
+                                <div className="text-[11px] text-slate-600 font-medium">{ht.bulan || '-'}</div>
                                 <div className="text-[10px] text-slate-400 font-normal">Dicatat: {ht.tanggal ? ht.tanggal.slice(0, 10) : '-'}</div>
                               </td>
                               <td className="p-2.5 text-right text-slate-700">{formatRupiah(ht.nominal_tagihan)}</td>
@@ -1183,120 +1198,25 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
         </div>
       </div>
 
-      {/* MODAL CATAT TUNGGAKAN HISTORIS */}
-      {showHistorisModal && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 bg-slate-900/65 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="bg-amber-700 text-white px-5 py-3.5 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <History className="w-4 h-4 text-amber-200" />
-                <h3 className="text-sm font-bold">Catat Tunggakan Manual / Historis</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowHistorisModal(false)}
-                className="text-amber-100 hover:text-white p-1 rounded-lg hover:bg-white/10 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveHistoris} className="p-5 space-y-4 text-xs">
-              <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl text-amber-900 text-[11px] leading-relaxed">
-                Gunakan form ini untuk mencatat tunggakan SPP lampau ananda <strong>{student.nama}</strong> sebelum aplikasi ini digunakan atau tahun ajaran sebelumnya.
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1">
-                    Pilihan Bulan (12 Bulan)
-                  </label>
-                  <select
-                    value={bulanHistoris}
-                    onChange={(e) => setBulanHistoris(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 font-semibold text-slate-800"
-                  >
-                    {[
-                      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-                      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
-                    ].map(m => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1">
-                    Pilihan Tahun
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    value={tahunHistoris}
-                    onChange={(e) => setTahunHistoris(Number(e.target.value))}
-                    placeholder="Contoh: 2024 atau 2025"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 font-mono font-bold text-slate-800"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 uppercase mb-1">
-                  Nominal Tunggakan (Rp)
-                </label>
-                <input
-                  type="number"
-                  required
-                  min={1000}
-                  value={nominalHistoris}
-                  onChange={(e) => setNominalHistoris(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 font-bold text-slate-900 text-sm"
-                />
-                <p className="text-[10px] text-slate-500 mt-1">
-                  Default terisi sesuai tarif SPP murid: {formatRupiah(student.spp_nominal || setting.spp_default_nominal)}
-                </p>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 uppercase mb-1">
-                  Catatan / Keterangan (Opsional)
-                </label>
-                <textarea
-                  rows={2}
-                  value={catatanHistoris}
-                  onChange={(e) => setCatatanHistoris(e.target.value)}
-                  placeholder="Contoh: Tunggakan sebelum sistem digunakan / koreksi buku lama"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-slate-800"
-                />
-              </div>
-
-              {historisSuccess && (
-                <div className="p-2.5 rounded-lg bg-emerald-100 text-emerald-800 font-bold text-[11px] flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-                  Catatan tunggakan historis berhasil disimpan!
-                </div>
-              )}
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setShowHistorisModal(false)}
-                  className="px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmittingHistoris}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold transition-colors shadow-xs cursor-pointer disabled:opacity-50"
-                >
-                  <Save className="w-3.5 h-3.5" />
-                  {isSubmittingHistoris ? 'Menyimpan...' : 'Simpan Catatan Tunggakan'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {/* MODAL CATAT TUNGGAKAN MANUAL / FLEKSIBEL */}
+      {showManualArrearsModal && (
+        <CatatTunggakanManualModal
+          isOpen={showManualArrearsModal}
+          onClose={() => setShowManualArrearsModal(false)}
+          students={students && students.length > 0 ? students : [student]}
+          initialStudent={student}
+          initialScope="MURID"
+          operatorName={operatorName}
+          setting={setting}
+          existingTransactions={transactions}
+          onSaveBatch={async (records) => {
+            if (onBatchRecordManualArrears) {
+              return onBatchRecordManualArrears(records);
+            } else {
+              return StorageService.recordManualArrearsBatch(records, operatorName || 'Bendahara');
+            }
+          }}
+        />
       )}
 
       {/* MODAL PELUNASAN TUNGGAKAN HISTORIS */}

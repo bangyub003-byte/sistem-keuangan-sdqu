@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Student, Transaction, SchoolSetting } from '../../types';
-import { Plus, Search, Edit3, Trash2, Download, Upload, Filter, Tag, Check, X, UserPlus, Phone, MapPin, Award, CreditCard, Eye, MessageCircle } from 'lucide-react';
+import { Plus, Search, Edit3, Trash2, Download, Upload, Filter, Tag, Check, X, UserPlus, Phone, MapPin, Award, CreditCard, Eye, MessageCircle, History } from 'lucide-react';
 import { SantriDetailModal } from './SantriDetailModal';
+import { CatatTunggakanManualModal } from './CatatTunggakanManualModal';
 import { INITIAL_SETTING } from '../../data/initialData';
+import { StorageService } from '../../services/storageService';
 
 interface SantriMenuProps {
   students: Student[];
@@ -19,6 +21,7 @@ interface SantriMenuProps {
   operatorName?: string;
   onProcessPayment?: (data: any) => Transaction;
   onVerifyPaymentStatus?: (trxId: string, newStatus: 'LUNAS' | 'KURANG' | 'CANCEL', paidAmount?: number, reason?: string) => void;
+  onBatchRecordManualArrears?: (records: any[]) => Promise<any>;
 }
 
 export const SantriMenu: React.FC<SantriMenuProps> = ({
@@ -35,12 +38,14 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
   onOpenKartuSpp,
   operatorName,
   onProcessPayment,
-  onVerifyPaymentStatus
+  onVerifyPaymentStatus,
+  onBatchRecordManualArrears
 }) => {
   const handleBulk = onImportStudents || onBulkImport;
   const [searchTerm, setSearchTerm] = useState('');
   const [filterKelas, setFilterKelas] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isManualArrearsModalOpen, setIsManualArrearsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [selectedDetailStudent, setSelectedDetailStudent] = useState<Student | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -296,6 +301,15 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsManualArrearsModalOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-amber-950 bg-amber-100 hover:bg-amber-200/90 border border-amber-300 rounded-xl transition-colors cursor-pointer shadow-2xs"
+            title="Catat tunggakan manual/khusus dengan fleksibilitas per murid, per kelas, atau semua murid"
+          >
+            <History className="w-3.5 h-3.5 text-amber-700" />
+            <span>Catat Tunggakan</span>
+          </button>
           <button
             onClick={handleExportCSV}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
@@ -787,6 +801,7 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
       {selectedDetailStudent && (
         <SantriDetailModal
           student={selectedDetailStudent}
+          students={students}
           transactions={transactions}
           setting={setting}
           onClose={() => setSelectedDetailStudent(null)}
@@ -800,6 +815,27 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
           operatorName={operatorName}
           onProcessPayment={onProcessPayment}
           onVerifyPaymentStatus={onVerifyPaymentStatus}
+          onBatchRecordManualArrears={onBatchRecordManualArrears}
+        />
+      )}
+
+      {/* Modal Catat Tunggakan Manual Massal / Fleksibel */}
+      {isManualArrearsModalOpen && (
+        <CatatTunggakanManualModal
+          isOpen={isManualArrearsModalOpen}
+          onClose={() => setIsManualArrearsModalOpen(false)}
+          students={students}
+          initialScope="MURID"
+          operatorName={operatorName}
+          setting={setting}
+          existingTransactions={transactions}
+          onSaveBatch={async (records) => {
+            if (onBatchRecordManualArrears) {
+              return onBatchRecordManualArrears(records);
+            } else {
+              return StorageService.recordManualArrearsBatch(records, operatorName || 'Bendahara');
+            }
+          }}
         />
       )}
     </div>

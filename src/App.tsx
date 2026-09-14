@@ -407,6 +407,33 @@ export default function App() {
     });
   };
 
+  // Batch Record Manual Arrears
+  const handleBatchRecordManualArrears = async (
+    records: Array<{
+      nisn: string;
+      nama_siswa: string;
+      kelas: string;
+      jenis: string;
+      kategori?: string;
+      bulan?: string;
+      nominal: number;
+      keterangan?: string;
+    }>
+  ) => {
+    setSyncStatus('syncing');
+    setSyncError(null);
+    const res = await StorageService.recordManualArrearsBatch(records, currentUser?.nama || 'Bendahara');
+    setTransactions(StorageService.getTransactions());
+    if (res.gasResult && res.gasResult.status === 'error') {
+      setSyncStatus('error');
+      setSyncError(res.gasResult.message);
+    } else {
+      setSyncStatus('synced');
+      if (res.gasResult?.version) setDataVersion(res.gasResult.version);
+    }
+    return res.added;
+  };
+
   // Cancel Payment
   const handleCancelPayment = async (trxId: string, reason: string) => {
     setSyncStatus('syncing');
@@ -621,6 +648,7 @@ export default function App() {
                     operatorName={currentUser?.nama || 'Bendahara'}
                     onProcessPayment={handleProcessPayment}
                     onVerifyPaymentStatus={handleVerifyPaymentStatus}
+                    onBatchRecordManualArrears={handleBatchRecordManualArrears}
                     onNavigateToPayment={(st) => {
                       setSelectedStudentForPayment(st);
                       setActiveBendaharaTab('PEMBAYARAN');

@@ -752,6 +752,7 @@ export const KepsekDashboard: React.FC<KepsekDashboardProps> = ({
       {selectedDetailStudent && (
         <SantriDetailModal
           student={selectedDetailStudent}
+          students={students}
           transactions={transactions}
           setting={setting}
           onClose={() => setSelectedDetailStudent(null)}

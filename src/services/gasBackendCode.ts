@@ -243,7 +243,7 @@ function doPost(e) {
     // Validasi Hak Akses (RBAC): Cegah KEPSEK / WALI melakukan aksi tulis/modifikasi
     var writeActions = [
       "ADD_STUDENT", "UPDATE_STUDENT", "DELETE_STUDENT", "BULK_IMPORT_STUDENTS",
-      "PROCESS_PAYMENT", "CANCEL_PAYMENT", "VERIFY_TRANSACTION", "UPDATE_TRANSACTION_STATUS",
+      "PROCESS_PAYMENT", "BULK_RECORD_ARREARS", "CANCEL_PAYMENT", "VERIFY_TRANSACTION", "UPDATE_TRANSACTION_STATUS",
       "ADD_KEUANGAN", "CANCEL_KEUANGAN", "UPDATE_SETTING",
       "ADD_ANNOUNCEMENT", "TOGGLE_ANNOUNCEMENT", "DELETE_ANNOUNCEMENT",
       "ADD_KATEGORI_DANA", "UPDATE_KATEGORI_DANA", "UPLOAD_DRIVE_FILE"
@@ -289,6 +289,10 @@ function doPost(e) {
 
       case "PROCESS_PAYMENT":
         response = handleProcessPayment(ss, payload);
+        break;
+
+      case "BULK_RECORD_ARREARS":
+        response = handleBulkRecordArrears(ss, payload);
         break;
 
       case "CANCEL_PAYMENT":
@@ -807,6 +811,45 @@ function handleProcessPayment(ss, trx) {
   bumpVersion();
 
   return { status: "success", id_transaksi: newTrxId, message: "Pembayaran berhasil dicatat permanen di Spreadsheet!" };
+}
+
+function handleBulkRecordArrears(ss, payload) {
+  var sheet = ss.getSheetByName("TRANSAKSI");
+  var list = payload.transactions || [];
+  if (!list.length) return { status: "error", message: "Daftar transaksi tunggakan kosong" };
+
+  var now = new Date();
+  var defaultTimestamp = Utilities.formatDate(now, "GMT+7", "yyyy-MM-dd HH:mm:ss");
+  var defaultTime = Utilities.formatDate(now, "GMT+7", "HH:mm:ss");
+
+  for (var i = 0; i < list.length; i++) {
+    var trx = list[i];
+    var trxId = trx.id_transaksi || ("TRX-MAN-" + Utilities.formatDate(now, "GMT+7", "yyyyMMddHHmmss") + "-" + i);
+    var dateStr = trx.tanggal || defaultTimestamp;
+    var timeStr = trx.waktu || defaultTime;
+    sheet.appendRow([
+      trxId,
+      dateStr,
+      trx.nisn,
+      trx.nama_siswa || "",
+      trx.kelas || "",
+      trx.jenis || "Tunggakan Manual",
+      trx.kategori || "SPP",
+      trx.bulan || "",
+      Number(trx.nominal_tagihan) || 0,
+      Number(trx.nominal_bayar) || 0,
+      Number(trx.sisa) || 0,
+      trx.status || "KURANG",
+      trx.petugas || payload.petugas || "Bendahara",
+      trx.keterangan || "[Tunggakan Manual]",
+      "",
+      timeStr
+    ]);
+  }
+
+  appendLog(ss, payload.petugas || "Bendahara", "Catat tunggakan manual massal untuk " + list.length + " santri");
+  bumpVersion();
+  return { status: "success", count: list.length, message: "Berhasil mencatat " + list.length + " tunggakan ke Spreadsheet!" };
 }
 
 /**

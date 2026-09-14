@@ -167,6 +167,23 @@ export function getStandardTransactionTitle(trx: {
   bulan?: string;
   keterangan?: string;
 }): string {
+  // If this is a historical / manual arrears transaction, return its specific custom jenis or title
+  if (isHistoricalArrearsTrx(trx)) {
+    const rawJenis = (trx.jenis || '').trim();
+    if (rawJenis && !rawJenis.toLowerCase().includes('tunggakan historis') && !rawJenis.toLowerCase().includes('tunggakan manual')) {
+      return rawJenis;
+    }
+    if (trx.bulan) {
+      return `Tunggakan ${trx.bulan}`;
+    }
+    return rawJenis || 'Tunggakan Manual';
+  }
+
+  // If specific non-SPP jenis is set (e.g. "Buku Paket", "Iuran Wisuda", "Seragam"), use it directly
+  if (trx.jenis && trx.jenis !== 'SPP' && trx.jenis !== 'SPP Bulanan' && !trx.jenis.toLowerCase().includes('spp')) {
+    return trx.jenis;
+  }
+
   const isSpp = trx.kategori === 'SPP' ||
                 (trx.jenis || '').toLowerCase().includes('spp') ||
                 Boolean(trx.bulan);
@@ -193,8 +210,8 @@ export function getStandardTransactionTitle(trx: {
 }
 
 /**
- * Checks whether a transaction is a historical arrears entry (pencatatan tunggakan historis).
- * Marked with prefix [Tunggakan Historis] or specific category/notes.
+ * Checks whether a transaction is a historical or manual arrears entry (pencatatan tunggakan manual/historis).
+ * Marked with prefix [Tunggakan Historis] or [Tunggakan Manual] in keterangan, or specific category/jenis notes.
  */
 export function isHistoricalArrearsTrx(t?: { jenis?: string; keterangan?: string; kategori?: string } | null): boolean {
   if (!t) return false;
@@ -203,8 +220,12 @@ export function isHistoricalArrearsTrx(t?: { jenis?: string; keterangan?: string
   const kat = (t.kategori || '').toLowerCase();
   return ket.includes('[tunggakan historis]') ||
          ket.includes('tunggakan historis') ||
+         ket.includes('[tunggakan manual]') ||
+         ket.includes('tunggakan manual') ||
          jenis.includes('tunggakan historis') ||
-         kat.includes('tunggakan historis');
+         jenis.includes('tunggakan manual') ||
+         kat.includes('tunggakan historis') ||
+         kat.includes('tunggakan manual');
 }
 
 /**

@@ -579,6 +579,75 @@ export class StorageService {
     return { transaction: newTrx, keuangan: newKeuangan, gasResult };
   }
 
+  static async recordManualArrearsBatch(
+    records: Array<{
+      nisn: string;
+      nama_siswa: string;
+      kelas: string;
+      jenis: string;
+      kategori?: string;
+      bulan?: string;
+      nominal: number;
+      keterangan?: string;
+    }>,
+    operator: string
+  ): Promise<{ added: Transaction[]; gasResult?: any }> {
+    const transactions = this.getTransactions();
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    const fullTimestamp = `${dateStr} ${timeStr}`;
+
+    const added: Transaction[] = records.map((rec, idx) => {
+      const cleanKet = (rec.keterangan || '').trim();
+      const finalKet = cleanKet.startsWith('[Tunggakan')
+        ? cleanKet
+        : cleanKet
+        ? `[Tunggakan Manual] ${cleanKet}`
+        : '[Tunggakan Manual]';
+
+      return {
+        id_transaksi: `TRX-MAN-${Date.now()}-${idx}`,
+        tanggal: fullTimestamp,
+        waktu: timeStr,
+        nisn: rec.nisn,
+        nama_siswa: rec.nama_siswa,
+        kelas: rec.kelas,
+        jenis: rec.jenis || 'Tunggakan Manual',
+        kategori: rec.kategori || 'SPP',
+        bulan: rec.bulan || '',
+        nominal_tagihan: Number(rec.nominal) || 0,
+        nominal_bayar: 0,
+        sisa: Number(rec.nominal) || 0,
+        status: 'KURANG' as const,
+        petugas: operator,
+        keterangan: finalKet
+      };
+    });
+
+    const updatedTrx = [...added, ...transactions];
+    this.saveTransactions(updatedTrx);
+
+    const totalNominal = records.reduce((sum, r) => sum + (Number(r.nominal) || 0), 0);
+    const sampleJenis = records[0]?.jenis || 'Tunggakan Manual';
+    this.addLog(
+      operator,
+      `Mencatat tunggakan manual "${sampleJenis}" untuk ${added.length} santri (Total: Rp ${totalNominal.toLocaleString('id-ID')})`
+    );
+
+    const setting = this.getSetting();
+    let gasResult: any = null;
+    if (setting.gas_url && added.length > 0) {
+      gasResult = await this.callGasApi(setting.gas_url, 'BULK_RECORD_ARREARS', {
+        transactions: added,
+        petugas: operator
+      });
+    }
+
+    return { added, gasResult };
+  }
+
   static async cancelPayment(trxId: string, reason: string, operator: string): Promise<{
     gasResult?: any;
   }> {
