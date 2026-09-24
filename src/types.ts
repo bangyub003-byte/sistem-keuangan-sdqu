@@ -103,6 +103,10 @@ export interface SchoolSetting {
   nama_bank?: string;
   no_rekening?: string;
   atas_nama_rekening?: string;
+  // Pengaturan Nomor Surat Tagihan
+  enable_nomor_surat?: boolean;
+  nomor_surat_berikutnya?: number;
+  format_awalan_surat?: string;
 }
 
 export interface Announcement {

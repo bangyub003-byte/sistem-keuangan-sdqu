@@ -525,7 +525,7 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                       <table className="w-full">
                         <tbody>
                           <tr>
-                            <td className="py-1 text-slate-500 w-32">Nama Santri</td>
+                            <td className="py-1 text-slate-500 w-32">Nama Murid</td>
                             <td className="py-1 font-bold text-slate-900">: {student.nama}</td>
                           </tr>
                           <tr>

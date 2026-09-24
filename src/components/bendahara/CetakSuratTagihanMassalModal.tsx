@@ -16,7 +16,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 
-export interface SuratTagihanSantriData {
+export interface SuratTagihanMuridData {
   student: Student;
   summary: ReturnType<typeof calculateStudentSppStatus>;
   tunggakanItems: Array<{
@@ -28,6 +28,8 @@ export interface SuratTagihanSantriData {
   totalTunggakan: number;
 }
 
+export type SuratTagihanSantriData = SuratTagihanMuridData;
+
 interface CetakSuratTagihanMassalModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -35,6 +37,7 @@ interface CetakSuratTagihanMassalModalProps {
   transactions: Transaction[];
   setting: SchoolSetting;
   initialClass?: string;
+  onUpdateSetting?: (updated: SchoolSetting) => void;
 }
 
 export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModalProps> = ({
@@ -43,14 +46,15 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
   students = [],
   transactions = [],
   setting,
-  initialClass = ''
+  initialClass = '',
+  onUpdateSetting
 }) => {
   // Mode pemilihan cakupan: 'KELAS' | 'MANUAL'
   const [scopeMode, setScopeMode] = useState<'KELAS' | 'MANUAL'>('KELAS');
   const [selectedClass, setSelectedClass] = useState<string>(initialClass || '');
   const [searchManual, setSearchManual] = useState<string>('');
   
-  // Tab view di dalam modal: 'DAFTAR' (seleksi santri) atau 'PRATINJAU' (lihat hasil surat di layar)
+  // Tab view di dalam modal: 'DAFTAR' (seleksi murid) atau 'PRATINJAU' (lihat hasil surat di layar)
   const [activeTab, setActiveTab] = useState<'DAFTAR' | 'PRATINJAU'>('DAFTAR');
   const [previewStudentId, setPreviewStudentId] = useState<string>('');
 
@@ -90,7 +94,7 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
   const formatRupiah = (val: number) => 'Rp ' + (val || 0).toLocaleString('id-ID');
 
   // Compute detailed tunggakan items for a student
-  const getStudentSuratData = (st: Student): SuratTagihanSantriData => {
+  const getStudentSuratData = (st: Student): SuratTagihanMuridData => {
     const summary = calculateStudentSppStatus(
       st,
       transactions,
@@ -168,7 +172,7 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
 
   // Pre-calculate data for active students to show status in table
   const allSuratDataMap = useMemo(() => {
-    const map = new Map<string, SuratTagihanSantriData>();
+    const map = new Map<string, SuratTagihanMuridData>();
     activeStudents.forEach(st => {
       map.set(st.id_siswa, getStudentSuratData(st));
     });
@@ -214,7 +218,7 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
         : classStudents;
       setSelectedStudentIds(new Set(targetList.map(s => s.id_siswa)));
     } else if (scopeMode === 'MANUAL' && onlyWithArrears) {
-      // Prune santri yang tidak ada tunggakan jika toggle aktif
+      // Prune murid yang tidak ada tunggakan jika toggle aktif
       setSelectedStudentIds(prev => {
         const next = new Set<string>();
         prev.forEach(id => {
@@ -281,12 +285,12 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
     }
 
     if (!students || students.length === 0) {
-      setErrorMessage('Data santri belum dimuat atau masih kosong, mohon tunggu sebentar.');
+      setErrorMessage('Data murid belum dimuat atau masih kosong, mohon tunggu sebentar.');
       return;
     }
 
     if (selectedStudentsToPrint.length === 0) {
-      setErrorMessage('Pilih minimal satu santri yang tercentang untuk dicetak surat tagihannya.');
+      setErrorMessage('Pilih minimal satu murid yang tercentang untuk dicetak surat tagihannya.');
       return;
     }
 
@@ -297,11 +301,21 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
     });
 
     if (hasIncompleteData) {
-      setErrorMessage('Data rincian tagihan santri sedang disiapkan, mohon tunggu 1 detik.');
+      setErrorMessage('Data rincian tagihan murid sedang disiapkan, mohon tunggu 1 detik.');
       return;
     }
 
     setErrorMessage(null);
+
+    // Otomatis majukan nomor surat berikutnya jika fitur penomoran aktif
+    if (onUpdateSetting && setting.enable_nomor_surat !== false) {
+      const nextNumber = (setting.nomor_surat_berikutnya ?? 1) + selectedStudentsToPrint.length;
+      onUpdateSetting({
+        ...setting,
+        nomor_surat_berikutnya: nextNumber
+      });
+    }
+
     try {
       window.focus();
       window.print();
@@ -348,7 +362,7 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
                   Cetak Surat Tagihan Massal untuk Wali Murid
                 </h3>
                 <p className="text-[11px] text-emerald-200 mt-0.5">
-                  Format surat resmi 1 halaman penuh per santri &bull; Dilengkapi Kop Resmi, Rincian Tunggakan & TTD Sah
+                  Format surat resmi 1 halaman penuh per murid &bull; Dilengkapi Kop Resmi, Rincian Tunggakan & TTD Sah
                 </p>
               </div>
             </div>
@@ -363,7 +377,7 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
             </button>
           </div>
 
-          {/* Subheader Navigation: Tab Daftar Santri vs Pratinjau Surat */}
+          {/* Subheader Navigation: Tab Daftar Murid vs Pratinjau Surat */}
           <div className="bg-slate-100 border-b border-slate-200 px-5 flex items-center justify-between gap-2 shrink-0">
             <div className="flex gap-2">
               <button
@@ -479,13 +493,13 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
                         const count = activeStudents.filter(s => s.kelas === cls).length;
                         return (
                           <option key={cls} value={cls}>
-                            Kelas {cls} ({count} Santri)
+                            Kelas {cls} ({count} Murid)
                           </option>
                         );
                       })}
                     </select>
                     <span className="text-[11px] text-slate-500 italic">
-                      Semua santri di kelas ini otomatis tercentang sesuai filter. Anda dapat membatalkan centang santri tertentu di tabel bawah.
+                      Semua murid di kelas ini otomatis tercentang sesuai filter. Anda dapat membatalkan centang murid tertentu di tabel bawah.
                     </span>
                   </div>
                 ) : (
@@ -550,7 +564,7 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
                   </div>
                 </div>
 
-                {/* Tabel Seleksi Santri */}
+                {/* Tabel Seleksi Murid */}
                 <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
                   <div className="max-h-60 overflow-y-auto">
                     <table className="w-full text-left border-collapse text-xs">
@@ -558,7 +572,7 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
                         <tr>
                           <th className="p-2.5 w-10 text-center">Pilih</th>
                           <th className="p-2.5 w-10 text-center">No</th>
-                          <th className="p-2.5">Nama Santri & NISN</th>
+                          <th className="p-2.5">Nama Murid & NISN</th>
                           <th className="p-2.5 w-24">Kelas</th>
                           <th className="p-2.5 w-32">Status Tagihan</th>
                           <th className="p-2.5 text-right w-36">Total Tunggakan</th>
@@ -570,7 +584,7 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
                           <tr>
                             <td colSpan={7} className="p-8 text-center text-slate-500">
                               {onlyWithArrears
-                                ? 'Alhamdulillah, tidak ada santri yang memiliki tunggakan pada kriteria ini (Semua Lunas).'
+                                ? 'Alhamdulillah, tidak ada murid yang memiliki tunggakan pada kriteria ini (Semua Lunas).'
                                 : 'Tidak ada murid yang sesuai dengan filter atau kata kunci.'}
                             </td>
                           </tr>
@@ -630,7 +644,7 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
                                       setActiveTab('PRATINJAU');
                                     }}
                                     className="px-2 py-1 text-[10px] font-bold text-emerald-700 hover:text-emerald-950 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
-                                    title="Lihat Pratinjau Surat Santri Ini"
+                                    title="Lihat Pratinjau Surat Murid Ini"
                                   >
                                     Pratinjau
                                   </button>
@@ -665,7 +679,7 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
             <div className="p-5 sm:p-6 overflow-y-auto space-y-4 text-xs text-slate-700 grow bg-slate-100/70">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-slate-200">
                 <div className="flex items-center gap-2">
-                  <label className="font-bold text-slate-800">Pilih Santri yang Dipratinjau:</label>
+                  <label className="font-bold text-slate-800">Pilih Murid yang Dipratinjau:</label>
                   <select
                     value={previewStudentId}
                     onChange={(e) => setPreviewStudentId(e.target.value)}
@@ -739,9 +753,11 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
                     <h2 className="text-sm sm:text-base font-extrabold text-slate-900 uppercase tracking-wide underline underline-offset-4">
                       SURAT PEMBERITAHUAN TAGIHAN PEMBAYARAN
                     </h2>
-                    <p className="text-[10px] text-slate-500 font-mono mt-0.5">
-                      Nomor: {previewStudent.nisn ? `TAG/${(setting.tahun_ajaran || '2025-2026').replace('/', '-')}/${previewStudent.nisn}` : 'TAG/RESMI/01'}
-                    </p>
+                    {setting.enable_nomor_surat !== false && (
+                      <p className="text-[10px] text-slate-500 font-mono mt-0.5">
+                        Nomor: {(setting.format_awalan_surat || '')}{String((setting.nomor_surat_berikutnya ?? 1) + Math.max(0, selectedStudentsToPrint.findIndex(s => s.id_siswa === previewStudent.id_siswa))).padStart(3, '0')}
+                      </p>
+                    )}
                   </div>
 
                   {/* TUJUAN */}
@@ -752,7 +768,7 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
                       di Tempat
                     </p>
                     <div className="bg-slate-50 border border-slate-200 p-2 rounded-lg grid grid-cols-2 gap-2 text-[10px] mt-1.5">
-                      <div><span className="text-slate-500">Nama Santri:</span> <strong>{previewStudent.nama}</strong></div>
+                      <div><span className="text-slate-500">Nama Murid:</span> <strong>{previewStudent.nama}</strong></div>
                       <div><span className="text-slate-500">Kelas / Tingkat:</span> <strong>{previewStudent.kelas}</strong></div>
                       <div><span className="text-slate-500">NISN:</span> <strong className="font-mono">{previewStudent.nisn || '-'}</strong></div>
                       <div><span className="text-slate-500">Tahun Ajaran:</span> <strong>{setting.tahun_ajaran}</strong></div>
@@ -763,7 +779,7 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
                   <div className="text-xs text-slate-800 mb-3 leading-relaxed">
                     <p className="mb-1.5"><em>Assalamu’alaikum Warahmatullahi Wabarakatuh,</em></p>
                     <p className="text-[11px]">
-                      Semoga Bapak/Ibu wali santri senantiasa dalam limpahan taufiq dan kesehatan dari Allah SWT. 
+                      Semoga Bapak/Ibu wali murid senantiasa dalam limpahan taufiq dan kesehatan dari Allah SWT. 
                       Sehubungan dengan tertib administrasi keuangan sekolah dan evaluasi berkala kegiatan belajar mengajar ananda di <strong>{setting.nama_sekolah}</strong>, 
                       bersama surat ini kami sampaikan rincian kewajiban administrasi pendidikan ananda sebagai berikut:
                     </p>
@@ -824,7 +840,7 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
                   {/* PENUTUP */}
                   <div className="text-[11px] text-slate-800 mb-3 leading-relaxed">
                     <p className="mb-1.5">
-                      Dukungan dan kedisiplinan Bapak/Ibu wali santri merupakan pilar utama kelancaran operasional pendidikan ananda. 
+                      Dukungan dan kedisiplinan Bapak/Ibu wali murid merupakan pilar utama kelancaran operasional pendidikan ananda. 
                       Kami memohon kesediaan Bapak/Ibu untuk berkenan menyelesaikan kewajiban tersebut dalam waktu dekat.
                     </p>
                     <p>
@@ -899,7 +915,7 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
                 >
                   <Printer className="w-4 h-4 text-emerald-200" />
                   <span>
-                    Cetak / Simpan PDF ({selectedStudentsToPrint.length} Santri)
+                    Cetak / Simpan PDF ({selectedStudentsToPrint.length} Murid)
                   </span>
                 </button>
                 <span className="text-[10px] text-slate-500 max-w-xs text-right sm:text-left leading-tight">
@@ -927,10 +943,9 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
           return (
             <div
               key={st.id_siswa}
-              className={`p-8 bg-white text-slate-900 relative overflow-hidden ${
+              className={`p-6 sm:p-8 bg-white text-slate-900 relative overflow-hidden print-break-inside-avoid ${
                 !isLastStudent ? 'print-page-break' : ''
               }`}
-              style={{ minHeight: '270mm' }}
             >
               {/* WATERMARK LOGO SEKOLAH (Transparan di Latar Belakang Setiap Lembar) */}
               <div className="watermark-bg pointer-events-none select-none absolute inset-0 flex items-center justify-center overflow-hidden z-0">
@@ -984,9 +999,11 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
                 <h2 className="text-base sm:text-lg font-extrabold text-slate-900 uppercase tracking-wide underline underline-offset-4">
                   SURAT PEMBERITAHUAN TAGIHAN PEMBAYARAN
                 </h2>
-                <p className="text-[11px] text-slate-500 font-mono mt-1">
-                  Nomor: {st.nisn ? `TAG/${(setting.tahun_ajaran || '2025-2026').replace('/', '-')}/${st.nisn}` : `TAG/${new Date().getFullYear()}/${studentIndex + 1}`}
-                </p>
+                {setting.enable_nomor_surat !== false && (
+                  <p className="text-[11px] text-slate-500 font-mono mt-1">
+                    Nomor: {(setting.format_awalan_surat || '')}{String((setting.nomor_surat_berikutnya ?? 1) + studentIndex).padStart(3, '0')}
+                  </p>
+                )}
               </div>
 
               {/* SALAM & IDENTITAS TUJUAN */}
@@ -998,7 +1015,7 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
                 </p>
                 <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-lg grid grid-cols-2 gap-2 text-[11px] mt-2">
                   <div>
-                    <span className="text-slate-500">Nama Santri:</span> <strong>{st.nama}</strong>
+                    <span className="text-slate-500">Nama Murid:</span> <strong>{st.nama}</strong>
                   </div>
                   <div>
                     <span className="text-slate-500">Kelas / Tingkat:</span> <strong>{st.kelas}</strong>
@@ -1019,13 +1036,13 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
                 </p>
                 {hasArrears ? (
                   <p>
-                    Semoga Bapak/Ibu wali santri senantiasa dalam limpahan taufiq dan kesehatan dari Allah SWT. 
+                    Semoga Bapak/Ibu wali murid senantiasa dalam limpahan taufiq dan kesehatan dari Allah SWT. 
                     Sehubungan dengan tertib administrasi keuangan sekolah dan evaluasi berkala kegiatan belajar mengajar ananda di <strong>{setting.nama_sekolah}</strong>, 
                     bersama surat ini kami sampaikan rincian kewajiban administrasi pendidikan ananda yang saat ini masih tercatat belum terselesaikan sebagai berikut:
                   </p>
                 ) : (
                   <p>
-                    Semoga Bapak/Ibu wali santri senantiasa dalam limpahan taufiq dan kesehatan dari Allah SWT. 
+                    Semoga Bapak/Ibu wali murid senantiasa dalam limpahan taufiq dan kesehatan dari Allah SWT. 
                     Sehubungan dengan tertib administrasi keuangan sekolah pada <strong>{setting.nama_sekolah}</strong>, 
                     kami menyampaikan laporan status kewajiban administrasi pendidikan ananda tercinta:
                   </p>
@@ -1091,7 +1108,7 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
               <div className="text-xs text-slate-800 mb-4 leading-relaxed">
                 {hasArrears ? (
                   <p className="mb-2">
-                    Dukungan dan kedisiplinan Bapak/Ibu wali santri merupakan pilar utama kelancaran operasional kegiatan belajar mengajar serta fasilitas terbaik bagi ananda. 
+                    Dukungan dan kedisiplinan Bapak/Ibu wali murid merupakan pilar utama kelancaran operasional kegiatan belajar mengajar serta fasilitas terbaik bagi ananda. 
                     Oleh karena itu, kami memohon kesediaan Bapak/Ibu untuk berkenan menyelesaikan kewajiban tersebut dalam waktu dekat.
                   </p>
                 ) : (

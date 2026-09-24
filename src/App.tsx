@@ -688,6 +688,7 @@ export default function App() {
                     keuangan={keuangan}
                     setting={setting}
                     onOpenPrintReport={handleOpenPrintReport}
+                    onUpdateSetting={handleSaveSetting}
                   />
                 )}
 

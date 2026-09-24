@@ -3,7 +3,7 @@ import { SchoolSetting, Announcement } from '../../types';
 import { GOOGLE_APPS_SCRIPT_CODE } from '../../services/gasBackendCode';
 import { StorageService } from '../../services/storageService';
 import { APP_CONFIG } from '../../config';
-import { Settings, Image, Upload, Link, Check, Copy, ExternalLink, RefreshCw, ShieldCheck, HelpCircle, FileCode, CheckCircle2, AlertCircle, QrCode, CreditCard, BookOpen, Bell, Megaphone, Trash2, PlusCircle, Info, Wrench, Calendar } from 'lucide-react';
+import { Settings, Image, Upload, Link, Check, Copy, ExternalLink, RefreshCw, ShieldCheck, HelpCircle, FileCode, CheckCircle2, AlertCircle, QrCode, CreditCard, BookOpen, Bell, Megaphone, Trash2, PlusCircle, Info, Wrench, Calendar, FileText } from 'lucide-react';
 import { INDONESIAN_MONTHS } from '../../utils/sppLogic';
 
 interface PengaturanMenuProps {
@@ -562,6 +562,89 @@ export const PengaturanMenu: React.FC<PengaturanMenuProps> = ({
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Section: Pengaturan Nomor Surat Tagihan */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-200 pb-3 flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-emerald-700" />
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">Pengaturan Nomor Surat Tagihan</h3>
+                <p className="text-xs text-slate-500">
+                  Format penomoran surat resmi otomatis saat mencetak Surat Tagihan untuk Wali Murid
+                </p>
+              </div>
+            </div>
+
+            {/* Toggle Aktifkan Penomoran Surat */}
+            <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+              <span className="text-xs font-bold text-slate-700">Aktifkan Penomoran Surat:</span>
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, enable_nomor_surat: !formData.enable_nomor_surat })}
+                className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  formData.enable_nomor_surat !== false ? 'bg-emerald-600' : 'bg-slate-300'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                    formData.enable_nomor_surat !== false ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+              <span className="text-xs font-bold text-slate-900 min-w-10">
+                {formData.enable_nomor_surat !== false ? 'Aktif' : 'Nonaktif'}
+              </span>
+            </div>
+          </div>
+
+          {formData.enable_nomor_surat !== false ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Format Awalan (Opsional)
+                </label>
+                <input
+                  type="text"
+                  value={formData.format_awalan_surat ?? 'TAG/2026-2027/'}
+                  onChange={(e) => setFormData({ ...formData, format_awalan_surat: e.target.value })}
+                  placeholder="Contoh: TAG/2026-2027/"
+                  className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white font-mono"
+                />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Awalan teks sebelum angka urut. Contoh: <code className="bg-slate-100 px-1 py-0.5 rounded text-emerald-800 font-mono">TAG/2026-2027/</code>
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Nomor Surat Berikutnya Dimulai Dari (Angka)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={formData.nomor_surat_berikutnya ?? 1}
+                  onChange={(e) => setFormData({ ...formData, nomor_surat_berikutnya: Math.max(1, parseInt(e.target.value) || 1) })}
+                  className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white font-mono font-bold text-emerald-900"
+                />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Setiap cetakan surat tagihan, nomor urut ini naik otomatis dari angka terakhir yang dipakai.
+                </p>
+              </div>
+
+              <div className="sm:col-span-2 p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-center justify-between">
+                <span>Pratinjau Nomor Surat Cetak Berikutnya:</span>
+                <strong className="font-mono text-sm font-extrabold bg-white px-2.5 py-1 rounded-lg border border-emerald-300 text-emerald-950">
+                  {(formData.format_awalan_surat || '')}{String(formData.nomor_surat_berikutnya ?? 1).padStart(3, '0')}
+                </strong>
+              </div>
+            </div>
+          ) : (
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600">
+              Penomoran surat dinonaktifkan. Baris "Nomor:" tidak akan ditampilkan pada cetakan surat tagihan.
+            </div>
+          )}
         </div>
 
         {/* Section 2c: Pengumuman & Informasi untuk Wali Murid */}

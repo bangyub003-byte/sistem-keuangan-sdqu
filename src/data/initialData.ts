@@ -22,7 +22,11 @@ export const INITIAL_SETTING: SchoolSetting = {
   nama_bank: "Bank Syariah Indonesia (BSI)",
   no_rekening: "7188 9922 11",
   atas_nama_rekening: "SDQU AL-I'TISHAM PLAYEN",
-  qris_image: "https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=00020101021126600016ID.CO.QRIS.WWW011893600000000000000002150000000000000005204581253033605802ID5925SDQU%20AL-ITISHAM%20PLAYEN6012GUNUNGKIDUL6105558616304ABCD"
+  qris_image: "https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=00020101021126600016ID.CO.QRIS.WWW011893600000000000000002150000000000000005204581253033605802ID5925SDQU%20AL-ITISHAM%20PLAYEN6012GUNUNGKIDUL6105558616304ABCD",
+  // Pengaturan Nomor Surat Tagihan
+  enable_nomor_surat: true,
+  nomor_surat_berikutnya: 1,
+  format_awalan_surat: "TAG/2026-2027/"
 };
 
 export const INITIAL_USERS: UserAccount[] = [

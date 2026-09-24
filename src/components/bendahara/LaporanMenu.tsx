@@ -11,6 +11,7 @@ interface LaporanMenuProps {
   keuangan: KeuanganRecord[];
   setting: SchoolSetting;
   onOpenPrintReport: (mode: PrintMode, month?: string) => void;
+  onUpdateSetting?: (updated: SchoolSetting) => void;
 }
 
 export const LaporanMenu: React.FC<LaporanMenuProps> = ({
@@ -18,7 +19,8 @@ export const LaporanMenu: React.FC<LaporanMenuProps> = ({
   students = [],
   keuangan = [],
   setting,
-  onOpenPrintReport
+  onOpenPrintReport,
+  onUpdateSetting
 }) => {
   const [selectedMonth, setSelectedMonth] = useState('');
   const [isSuratMassalModalOpen, setIsSuratMassalModalOpen] = useState(false);
@@ -227,6 +229,7 @@ export const LaporanMenu: React.FC<LaporanMenuProps> = ({
         students={students}
         transactions={transactions}
         setting={setting}
+        onUpdateSetting={onUpdateSetting}
       />
     </div>
   );
