@@ -84,40 +84,185 @@ html.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
   border-color: #334155 !important;
 }
 
+/* ==========================================================================
+   COLOR OVERRIDES FOR PDF & PRINT CONTAINERS (MENCEGAH ERROR OKLCH)
+   Library html2pdf / html2canvas tidak mendukung color function oklch().
+   Selector berikut memaksa seluruh warna di dalam container cetak memakai
+   format HEX / RGB eksplisit.
+   ========================================================================== */
+#printable-document,
+#printable-surat-massal,
+.pdf-safe-container {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+#printable-document .bg-white, #printable-surat-massal .bg-white { background-color: #ffffff !important; }
+#printable-document .bg-slate-50, #printable-surat-massal .bg-slate-50 { background-color: #f8fafc !important; }
+#printable-document .bg-slate-100, #printable-surat-massal .bg-slate-100 { background-color: #f1f5f9 !important; }
+#printable-document .bg-slate-200, #printable-surat-massal .bg-slate-200 { background-color: #e2e8f0 !important; }
+#printable-document .bg-emerald-50, #printable-surat-massal .bg-emerald-50 { background-color: #ecfdf5 !important; }
+#printable-document .bg-emerald-100, #printable-surat-massal .bg-emerald-100 { background-color: #d1fae5 !important; }
+#printable-document .bg-emerald-600, #printable-surat-massal .bg-emerald-600 { background-color: #059669 !important; }
+#printable-document .bg-emerald-700, #printable-surat-massal .bg-emerald-700 { background-color: #047857 !important; }
+#printable-document .bg-emerald-800, #printable-surat-massal .bg-emerald-800 { background-color: #065f46 !important; }
+#printable-document .bg-emerald-900, #printable-surat-massal .bg-emerald-900 { background-color: #064e3b !important; }
+#printable-document .bg-amber-50, #printable-surat-massal .bg-amber-50 { background-color: #fffbeb !important; }
+#printable-document .bg-amber-100, #printable-surat-massal .bg-amber-100 { background-color: #fef3c7 !important; }
+#printable-document .bg-rose-50, #printable-surat-massal .bg-rose-50 { background-color: #fff1f2 !important; }
+#printable-document .bg-rose-100, #printable-surat-massal .bg-rose-100 { background-color: #ffe4e6 !important; }
+
+#printable-document .text-white, #printable-surat-massal .text-white { color: #ffffff !important; }
+#printable-document .text-slate-900, #printable-surat-massal .text-slate-900 { color: #0f172a !important; }
+#printable-document .text-slate-800, #printable-surat-massal .text-slate-800 { color: #1e293b !important; }
+#printable-document .text-slate-700, #printable-surat-massal .text-slate-700 { color: #334155 !important; }
+#printable-document .text-slate-600, #printable-surat-massal .text-slate-600 { color: #475569 !important; }
+#printable-document .text-slate-500, #printable-surat-massal .text-slate-500 { color: #64748b !important; }
+#printable-document .text-slate-400, #printable-surat-massal .text-slate-400 { color: #94a3b8 !important; }
+#printable-document .text-slate-300, #printable-surat-massal .text-slate-300 { color: #cbd5e1 !important; }
+#printable-document .text-emerald-950, #printable-surat-massal .text-emerald-950 { color: #022c22 !important; }
+#printable-document .text-emerald-900, #printable-surat-massal .text-emerald-900 { color: #064e3b !important; }
+#printable-document .text-emerald-800, #printable-surat-massal .text-emerald-800 { color: #065f46 !important; }
+#printable-document .text-emerald-700, #printable-surat-massal .text-emerald-700 { color: #047857 !important; }
+#printable-document .text-emerald-600, #printable-surat-massal .text-emerald-600 { color: #059669 !important; }
+#printable-document .text-amber-950, #printable-surat-massal .text-amber-950 { color: #451a03 !important; }
+#printable-document .text-amber-900, #printable-surat-massal .text-amber-900 { color: #78350f !important; }
+#printable-document .text-amber-800, #printable-surat-massal .text-amber-800 { color: #92400e !important; }
+#printable-document .text-rose-950, #printable-surat-massal .text-rose-950 { color: #4c0519 !important; }
+#printable-document .text-rose-900, #printable-surat-massal .text-rose-900 { color: #881337 !important; }
+#printable-document .text-rose-800, #printable-surat-massal .text-rose-800 { color: #9f1239 !important; }
+#printable-document .text-rose-700, #printable-surat-massal .text-rose-700 { color: #be123c !important; }
+
+#printable-document .border-slate-100, #printable-surat-massal .border-slate-100 { border-color: #f1f5f9 !important; }
+#printable-document .border-slate-200, #printable-surat-massal .border-slate-200 { border-color: #e2e8f0 !important; }
+#printable-document .border-slate-300, #printable-surat-massal .border-slate-300 { border-color: #cbd5e1 !important; }
+#printable-document .border-slate-400, #printable-surat-massal .border-slate-400 { border-color: #94a3b8 !important; }
+#printable-document .border-emerald-200, #printable-surat-massal .border-emerald-200 { border-color: #a7f3d0 !important; }
+#printable-document .border-emerald-300, #printable-surat-massal .border-emerald-300 { border-color: #6ee7b7 !important; }
+#printable-document .border-emerald-800, #printable-surat-massal .border-emerald-800 { border-color: #065f46 !important; }
+#printable-document .border-amber-200, #printable-surat-massal .border-amber-200 { border-color: #fde68a !important; }
+#printable-document .border-amber-300, #printable-surat-massal .border-amber-300 { border-color: #fcd34d !important; }
+#printable-document .border-rose-200, #printable-surat-massal .border-rose-200 { border-color: #fecdd3 !important; }
+
+/* ==========================================================================
+   PRINT MEDIA RULES (CETAK DOKUMEN RESMI KUITANSI & SURAT TAGIHAN MASSAL)
+   ========================================================================== */
+@media screen {
+  #printable-surat-massal {
+    display: none !important;
+  }
+}
+
 @media print {
   @page {
-    margin: 12mm 15mm;
-    size: A4 portrait;
+    margin: 8mm 10mm;
+    size: auto;
   }
 
-  body {
+  html, body {
     background-color: #ffffff !important;
     color: #000000 !important;
     font-size: 11pt;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
   }
 
-  /* Hide app navigation, headers, controls during print */
-  .no-print {
+  /* 1. Sembunyikan SEMUA elemen UI non-cetak:
+        Header, navbar, main content formulir, footer,
+        semua modal popup kontrol (.no-print & #printable-surat-massal-modal) */
+  nav,
+  header,
+  main,
+  footer,
+  #root > div > header,
+  #root > div > main,
+  #root > div > footer,
+  .no-print,
+  #printable-surat-massal-modal,
+  .watermark-bg.screen-only {
     display: none !important;
   }
 
-  /* Show print specific container */
-  .print-only {
+  /* Jika sedang membuka modal cetak surat tagihan massal, sembunyikan container root agar tidak ada halaman kosong */
+  body:has(#printable-surat-massal) #root {
+    display: none !important;
+  }
+
+  #root, #root > div {
+    min-height: 0 !important;
+    height: auto !important;
+    background: transparent !important;
+  }
+
+  /* 2. Modal pratinjau kuitansi di-reset menjadi kontainer statis normal */
+  #printable-report-modal {
+    position: static !important;
     display: block !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    width: 100% !important;
+    height: auto !important;
+    inset: auto !important;
+    backdrop-filter: none !important;
+    box-shadow: none !important;
   }
 
-  /* Avoid page breaks inside receipts, tables, and signature blocks */
-  .print-break-inside-avoid {
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
+  /* 3. Lembar Kuitansi / Laporan Individual */
+  #printable-document {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background-color: #ffffff !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
   }
 
+  /* 4. Lembar Surat Tagihan Massal Murid */
+  #printable-surat-massal {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    left: auto !important;
+    top: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background-color: #ffffff !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+  }
+
+  #printable-surat-massal > div {
+    background-color: #ffffff !important;
+  }
+
+  /* Page break rules antar halaman murid pada cetak massal */
   .print-page-break {
     page-break-after: always !important;
     break-after: page !important;
   }
 
-  /* Ensure background colors for badges & borders show properly in print */
+  /* Hindari pemotongan di tengah baris tabel atau tanda tangan */
+  .print-break-inside-avoid {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Pastikan background cetak berwarna sesuai */
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;

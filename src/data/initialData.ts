@@ -10,6 +10,8 @@ export const INITIAL_SETTING: SchoolSetting = {
   tahun_ajaran: "2026/2027",
   nama_kepsek: "Ust. H. Ahmad Mufid, M.Pd.",
   nama_bendahara: "Usth. Nur Khasanah, S.E.I.",
+  nipy_kepala_sekolah: "19820514 201001 1 004",
+  nipy_bendahara: "19880922 201203 2 011",
   spp_default_nominal: 85000,
   spp_mulai_bulan: "Oktober",
   spp_mulai_tahun: 2026,

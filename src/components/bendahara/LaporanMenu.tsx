@@ -2,7 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { Transaction, Student, KeuanganRecord, SchoolSetting } from '../../types';
 import { PrintMode } from '../PrintReportView';
 import { calculateAllStudentsSppSummary } from '../../utils/sppLogic';
-import { Printer, FileSpreadsheet, AlertTriangle, ArrowDownLeft, ArrowUpRight, BookOpen, Calendar, Filter } from 'lucide-react';
+import { Printer, FileSpreadsheet, AlertTriangle, ArrowDownLeft, ArrowUpRight, BookOpen, Calendar, Filter, Mail, Users, FileText } from 'lucide-react';
+import { CetakSuratTagihanMassalModal } from './CetakSuratTagihanMassalModal';
 
 interface LaporanMenuProps {
   transactions: Transaction[];
@@ -20,6 +21,7 @@ export const LaporanMenu: React.FC<LaporanMenuProps> = ({
   onOpenPrintReport
 }) => {
   const [selectedMonth, setSelectedMonth] = useState('');
+  const [isSuratMassalModalOpen, setIsSuratMassalModalOpen] = useState(false);
 
   // Stats calculation
   const totalPembayaranMasuk = transactions
@@ -124,10 +126,45 @@ export const LaporanMenu: React.FC<LaporanMenuProps> = ({
             Semua tombol cetak aktif dengan KOP SURAT resmi SD Qur'an Unggulan Al-I'tisham Playen
           </p>
         </div>
-        <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-700">
-          <Calendar className="w-4 h-4 text-emerald-700" />
-          <span>Tahun Ajaran: {setting.tahun_ajaran}</span>
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setIsSuratMassalModalOpen(true)}
+            className="flex items-center gap-2 bg-emerald-800 hover:bg-emerald-900 text-white px-4 py-2 rounded-xl text-xs font-extrabold shadow-xs transition-all cursor-pointer"
+          >
+            <Mail className="w-4 h-4 text-emerald-300" />
+            <span>Cetak Surat Tagihan Massal</span>
+          </button>
+          <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-700">
+            <Calendar className="w-4 h-4 text-emerald-700" />
+            <span>Tahun Ajaran: {setting.tahun_ajaran}</span>
+          </div>
         </div>
+      </div>
+
+      {/* Featured Card: Cetak Surat Tagihan Massal untuk Wali Murid */}
+      <div className="bg-gradient-to-r from-emerald-900 via-emerald-800 to-teal-900 rounded-2xl p-5 text-white shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="space-y-1 max-w-2xl">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-700/80 text-emerald-200 border border-emerald-500/40 uppercase tracking-wider">
+            <Mail className="w-3 h-3 text-emerald-300" /> Fitur Khusus Wali Murid & Rapor
+          </div>
+          <h3 className="text-lg font-extrabold tracking-tight">
+            Cetak Surat Tagihan Massal untuk Wali Murid
+          </h3>
+          <p className="text-xs text-emerald-100/90 leading-relaxed">
+            Cetak surat pemberitahuan tagihan resmi per-santri (1 halaman A4 penuh per anak) untuk satu kelas penuh atau murid tertentu. 
+            Menggabungkan seluruh tunggakan SPP berjalan dan tunggakan khusus/manual agar wali yang jarang membuka HP tetap terinformasi di atas kertas saat penerimaan rapor.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsSuratMassalModalOpen(true)}
+          className="shrink-0 w-full md:w-auto px-5 py-3 bg-amber-400 hover:bg-amber-300 text-amber-950 font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+        >
+          <Printer className="w-4 h-4" />
+          <span>Buka Dialog Cetak Massal</span>
+        </button>
       </div>
 
       {/* Grid of Printable Reports */}
@@ -182,6 +219,15 @@ export const LaporanMenu: React.FC<LaporanMenuProps> = ({
           <li>Dapat langsung dicetak ke printer fisik (kertas A4) atau disimpan sebagai file PDF.</li>
         </ul>
       </div>
+
+      {/* Modal Cetak Surat Tagihan Massal untuk Wali Murid */}
+      <CetakSuratTagihanMassalModal
+        isOpen={isSuratMassalModalOpen}
+        onClose={() => setIsSuratMassalModalOpen(false)}
+        students={students}
+        transactions={transactions}
+        setting={setting}
+      />
     </div>
   );
 };

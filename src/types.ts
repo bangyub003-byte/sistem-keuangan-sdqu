@@ -90,6 +90,8 @@ export interface SchoolSetting {
   tahun_ajaran: string;
   nama_kepsek: string;
   nama_bendahara: string;
+  nipy_kepala_sekolah?: string;
+  nipy_bendahara?: string;
   spp_default_nominal: number;
   spp_mulai_bulan?: string; // e.g. "Juli"
   spp_mulai_tahun?: number; // e.g. 2026
