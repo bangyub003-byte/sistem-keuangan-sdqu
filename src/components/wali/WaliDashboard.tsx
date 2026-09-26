@@ -1,7 +1,14 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Student, Transaction, SchoolSetting, UserAccount, Announcement } from '../../types';
 import { PrintMode } from '../PrintReportView';
-import { calculateStudentSppStatus, getStandardTransactionTitle, formatTransactionTimestamp, isHistoricalArrearsTrx, cleanTransactionTime } from '../../utils/sppLogic';
+import {
+  calculateStudentSppStatus,
+  getStandardTransactionTitle,
+  formatTransactionTimestamp,
+  formatIndonesianDateShort,
+  isHistoricalArrearsTrx,
+  cleanTransactionTime
+} from '../../utils/sppLogic';
 import { createPaymentConfirmationWaUrl, createWaliToBendaharaWaUrl } from '../../utils/whatsappHelper';
 import {
   GraduationCap,
@@ -584,7 +591,7 @@ export const WaliDashboard: React.FC<WaliDashboardProps> = ({
                     </div>
                     {m.status === 'LUNAS' && latestTrx && (
                       <div className="text-[8.5px] font-medium text-emerald-700/90 mt-1 pt-1 border-t border-emerald-200/60 leading-tight">
-                        <div className="font-semibold">{latestTrx.tanggal}</div>
+                        <div className="font-semibold">{formatIndonesianDateShort(latestTrx.tanggal)}</div>
                         <div className="font-mono text-[8px] text-emerald-800 font-bold">
                           {cleanTransactionTime(latestTrx.waktu) ? `${cleanTransactionTime(latestTrx.waktu)} WIB` : ''}
                         </div>
@@ -618,10 +625,14 @@ export const WaliDashboard: React.FC<WaliDashboardProps> = ({
                 ) : (
                   myTransactions.map(trx => {
                     const ts = formatTransactionTimestamp(trx.tanggal, trx.waktu);
+                    const formattedDate = formatIndonesianDateShort(ts.dateDisplay);
+                    const displayTime = ts.cleanTime || (ts.timeDisplay ? ts.timeDisplay.replace(' WIB', '') : '');
                     return (
                     <tr key={trx.id_transaksi} className="hover:bg-slate-50">
                       <td className="p-3 whitespace-nowrap text-slate-600 font-medium">
-                        <div className="font-semibold text-slate-800">{ts.dateDisplay}</div>
+                        <div className="font-semibold text-slate-800">
+                          {displayTime ? `${formattedDate}, ${displayTime}` : formattedDate}
+                        </div>
                         {ts.timeDisplay && (
                           <div className="text-[10px] text-emerald-800 font-mono mt-0.5 font-semibold">
                             {ts.timeDisplay}

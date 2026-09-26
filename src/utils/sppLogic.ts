@@ -189,7 +189,7 @@ export function getStandardTransactionTitle(trx: {
                 Boolean(trx.bulan);
 
   if (isSpp && trx.bulan) {
-    const cleanBulan = trx.bulan.trim();
+    const cleanBulan = formatBulanDibayar(trx.bulan) || trx.bulan.trim();
     if (cleanBulan.toLowerCase().startsWith('spp bulan')) {
       return cleanBulan;
     }
@@ -599,6 +599,84 @@ export function cleanTransactionTime(rawTime?: any): string {
 }
 
 /**
+ * Format string bulan pembayaran menjadi nama bulan dan tahun bersih (e.g. "Juli 2026").
+ * Menghilangkan waktu 00:00:00 dan format tanggal ISO dari Google Sheets.
+ */
+export function formatBulanDibayar(rawBulan?: string): string {
+  if (!rawBulan) return '';
+  let str = String(rawBulan).trim();
+  if (!str) return '';
+
+  // Bersihkan prefix "SPP Bulan " atau "SPP " jika ada
+  str = str.replace(/^spp\s+(?:bulan\s+)?/i, '').trim();
+
+  // 1. Cek format ISO YYYY-MM atau YYYY-MM-DD (dengan atau tanpa jam 00:00:00)
+  const isoMatch = str.match(/^(\d{4})[-/](\d{1,2})(?:[-/]\d{1,2})?(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?/);
+  if (isoMatch) {
+    const y = parseInt(isoMatch[1], 10);
+    const m = parseInt(isoMatch[2], 10);
+    if (m >= 1 && m <= 12) {
+      return `${INDONESIAN_MONTHS[m - 1]} ${y}`;
+    }
+  }
+
+  // 2. Cek format DD-MM-YYYY atau DD/MM/YYYY
+  const dmyMatch = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?/);
+  if (dmyMatch) {
+    const m = parseInt(dmyMatch[2], 10);
+    const y = parseInt(dmyMatch[3], 10);
+    if (m >= 1 && m <= 12) {
+      return `${INDONESIAN_MONTHS[m - 1]} ${y}`;
+    }
+  }
+
+  // 3. Cek jika sudah mengandung nama bulan Indonesia
+  for (let i = 0; i < INDONESIAN_MONTHS.length; i++) {
+    const mName = INDONESIAN_MONTHS[i];
+    const regex = new RegExp(`\\b${mName}\\b(?:\\s+(\\d{4}))?`, 'i');
+    const match = str.match(regex);
+    if (match) {
+      const year = match[1] || (str.match(/\b(20\d{2})\b/)?.[1]);
+      return year ? `${mName} ${year}` : mName;
+    }
+  }
+
+  // 4. Jika masih ada sisa jam kosong seperti " 00:00:00", hapus
+  str = str.replace(/\s+00:00(?::00)?.*$/, '').trim();
+
+  return str;
+}
+
+export const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+
+/**
+ * Format tanggal ke format ringkas Indonesia: "26 Sep 2026"
+ */
+export function formatIndonesianDateShort(dateStr?: string): string {
+  if (!dateStr) return '-';
+  const clean = dateStr.split('T')[0].split(' ')[0].trim();
+  const match = clean.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (match) {
+    const y = match[1];
+    const m = parseInt(match[2], 10);
+    const d = parseInt(match[3], 10);
+    if (m >= 1 && m <= 12) {
+      return `${d} ${MONTH_SHORT[m - 1]} ${y}`;
+    }
+  }
+  const dmyMatch = clean.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (dmyMatch) {
+    const d = parseInt(dmyMatch[1], 10);
+    const m = parseInt(dmyMatch[2], 10);
+    const y = dmyMatch[3];
+    if (m >= 1 && m <= 12) {
+      return `${d} ${MONTH_SHORT[m - 1]} ${y}`;
+    }
+  }
+  return clean;
+}
+
+/**
  * Format real-time timestamp seragam di seluruh dashboard (tanggal & jam:menit:detik WIB)
  */
 export function formatTransactionTimestamp(
@@ -608,6 +686,7 @@ export function formatTransactionTimestamp(
   dateDisplay: string;
   timeDisplay: string;
   fullDisplay: string;
+  cleanTime: string;
 } {
   let datePart = '';
   let timePart = '';
@@ -638,6 +717,16 @@ export function formatTransactionTimestamp(
     timePart = '';
   }
 
+  let cleanTime = '';
+  if (timePart) {
+    const parts = timePart.split(':');
+    if (parts.length >= 2) {
+      cleanTime = `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
+    } else {
+      cleanTime = timePart;
+    }
+  }
+
   // Jika timePart format HH:mm, lengkapi detik agar seragam
   if (timePart && timePart.split(':').length === 2) {
     timePart = `${timePart}:00`;
@@ -649,6 +738,7 @@ export function formatTransactionTimestamp(
   return {
     dateDisplay: datePart || '-',
     timeDisplay,
-    fullDisplay
+    fullDisplay,
+    cleanTime
   };
 }

@@ -6,6 +6,7 @@ import {
   calculateAllStudentsSppSummary,
   getStandardTransactionTitle,
   formatTransactionTimestamp,
+  formatBulanDibayar,
   cleanTransactionTime
 } from '../utils/sppLogic';
 import { createTunggakanReminderWaUrl } from '../utils/whatsappHelper';
@@ -220,12 +221,12 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                     <tbody>
                       <tr>
                         <td className="py-1 text-slate-500 w-32">Tanggal Transaksi</td>
-                        <td className="py-1 font-bold text-slate-900">: {transaction.tanggal}</td>
+                        <td className="py-1 font-bold text-slate-900">: {trxTs.dateDisplay || transaction.tanggal}</td>
                       </tr>
                       {transaction.bulan ? (
                         <tr className="bg-emerald-50/70">
                           <td className="py-1 text-emerald-900 font-bold w-32">Bulan Dibayar</td>
-                          <td className="py-1 font-extrabold text-emerald-900">: {transaction.bulan}</td>
+                          <td className="py-1 font-extrabold text-emerald-900">: {formatBulanDibayar(transaction.bulan)}</td>
                         </tr>
                       ) : (
                         <tr>
@@ -342,7 +343,7 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                         <td className="border border-slate-300 p-2 font-mono">{t.tanggal}</td>
                         <td className="border border-slate-300 p-2 font-bold text-slate-800">{t.nama_siswa}</td>
                         <td className="border border-slate-300 p-2 text-center">{t.kelas}</td>
-                        <td className="border border-slate-300 p-2 text-center font-medium">{t.bulan || '-'}</td>
+                        <td className="border border-slate-300 p-2 text-center font-medium">{formatBulanDibayar(t.bulan) || '-'}</td>
                         <td className="border border-slate-300 p-2 text-right font-medium text-emerald-800">
                           {formatRupiah(t.nominal_bayar)}
                         </td>
@@ -660,16 +661,6 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
             </div>
 
             <div className="flex items-center gap-2 sm:gap-3">
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold px-4 py-2 rounded-xl text-xs sm:text-sm shadow-md transition-all cursor-pointer"
-                title="Buka jendela cetak atau Simpan sebagai PDF"
-              >
-                <Printer className="w-4 h-4" />
-                <span>Cetak / Simpan PDF</span>
-              </button>
-
               <button
                 type="button"
                 onClick={onClose}
