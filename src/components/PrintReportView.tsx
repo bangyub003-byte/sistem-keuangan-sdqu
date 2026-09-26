@@ -34,6 +34,7 @@ interface PrintReportViewProps {
   students?: Student[];
   keuangan?: KeuanganRecord[];
   filterMonth?: string;
+  hideWatermark?: boolean;
 }
 
 export const PrintReportView: React.FC<PrintReportViewProps> = ({
@@ -47,7 +48,8 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
   transactions = [],
   students = [],
   keuangan = [],
-  filterMonth = ''
+  filterMonth = '',
+  hideWatermark = false
 }) => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -129,24 +131,26 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
 
     return (
       <div className="relative">
-        {/* WATERMARK LOGO SEKOLAH (Transparan & Samar di Latar Belakang) */}
-        <div className="watermark-bg pointer-events-none select-none absolute inset-0 flex items-center justify-center overflow-hidden z-0">
-          {setting.logo ? (
-            <img
-              src={setting.logo}
-              alt=""
-              className="w-72 h-72 sm:w-88 sm:h-88 object-contain opacity-[0.08] grayscale contrast-125 filter"
-              style={{ opacity: 0.08 }}
-            />
-          ) : (
-            <div
-              className="text-8xl sm:text-9xl font-bold font-arabic select-none text-slate-900"
-              style={{ opacity: 0.06 }}
-            >
-              الإعتصام
-            </div>
-          )}
-        </div>
+        {/* WATERMARK LOGO SEKOLAH (Transparan & Samar di Latar Belakang) - Hanya jika hideWatermark false */}
+        {!hideWatermark && (
+          <div className="watermark-bg pointer-events-none select-none absolute inset-0 flex items-center justify-center overflow-hidden z-0">
+            {setting.logo ? (
+              <img
+                src={setting.logo}
+                alt=""
+                className="w-72 h-72 sm:w-88 sm:h-88 object-contain opacity-[0.08] grayscale contrast-125 filter"
+                style={{ opacity: 0.08 }}
+              />
+            ) : (
+              <div
+                className="text-8xl sm:text-9xl font-bold font-arabic select-none text-slate-900"
+                style={{ opacity: 0.06 }}
+              >
+                الإعتصام
+              </div>
+            )}
+          </div>
+        )}
 
         {/* KONTEN DOKUMEN RESMI STANDAR A4/A5 */}
         <div className="relative z-10">
@@ -216,10 +220,7 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                     <tbody>
                       <tr>
                         <td className="py-1 text-slate-500 w-32">Tanggal Transaksi</td>
-                        <td className="py-1 font-bold text-slate-900">
-                          : {trxTs.dateDisplay}{' '}
-                          {trxTs.timeDisplay ? `(${trxTs.timeDisplay} WIB)` : ''}
-                        </td>
+                        <td className="py-1 font-bold text-slate-900">: {transaction.tanggal}</td>
                       </tr>
                       {transaction.bulan ? (
                         <tr className="bg-emerald-50/70">
@@ -643,11 +644,11 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
       {/* 1. MODAL DIALOG PRATINJAU DI LAYAR (no-print) */}
       <div
         id="printable-report-modal"
-        className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 no-print"
+        className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 no-print print:hidden"
       >
-        <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl flex flex-col max-h-[92vh] overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl flex flex-col max-h-[92vh] overflow-hidden no-print print:hidden">
           {/* Header - Fixed at Top */}
-          <div className="bg-gradient-to-r from-emerald-900 via-emerald-800 to-teal-900 px-5 sm:px-6 py-3.5 flex items-center justify-between text-white shrink-0">
+          <div className="bg-gradient-to-r from-emerald-900 via-emerald-800 to-teal-900 px-5 sm:px-6 py-3.5 flex items-center justify-between text-white shrink-0 no-print print:hidden">
             <div>
               <div className="flex items-center gap-2">
                 <FileText className="w-5 h-5 text-emerald-300" />
@@ -682,7 +683,7 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
 
           {/* Banner Error jika data belum siap */}
           {errorMessage && (
-            <div className="mx-4 mt-3 p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs flex items-center justify-between shadow-xs animate-in fade-in duration-200 shrink-0">
+            <div className="mx-4 mt-3 p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs flex items-center justify-between shadow-xs animate-in fade-in duration-200 shrink-0 no-print print:hidden">
               <div className="flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
                 <span>{errorMessage}</span>
@@ -704,7 +705,7 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
           </div>
 
           {/* Footer Bar - Fixed at Bottom */}
-          <div className="bg-white border-t border-slate-200 p-3 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-2 shrink-0">
+          <div className="bg-white border-t border-slate-200 p-3 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-2 shrink-0 no-print print:hidden">
             <span className="text-[11px] text-slate-500 text-center sm:text-left">
               Gunakan pilihan <strong>'Simpan sebagai PDF'</strong> pada jendela cetak untuk mengunduh dokumen.
             </span>

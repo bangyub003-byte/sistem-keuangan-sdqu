@@ -387,7 +387,7 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
           ========================================================================= */}
       <div 
         id="printable-surat-massal-modal" 
-        className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-900/75 backdrop-blur-sm overflow-hidden no-print"
+        className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-900/75 backdrop-blur-sm overflow-hidden no-print print:hidden"
       >
         <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
           

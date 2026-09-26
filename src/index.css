@@ -172,7 +172,7 @@ html.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
 
   /* 1. Sembunyikan SEMUA elemen UI non-cetak:
         Header, navbar, main content formulir, footer,
-        semua modal popup kontrol (.no-print & #printable-surat-massal-modal) */
+        semua modal popup kontrol (.no-print, #printable-report-modal, #printable-surat-massal-modal) */
   nav,
   header,
   main,
@@ -181,6 +181,7 @@ html.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
   #root > div > main,
   #root > div > footer,
   .no-print,
+  #printable-report-modal,
   #printable-surat-massal-modal,
   .watermark-bg.screen-only {
     display: none !important;
@@ -198,22 +199,7 @@ html.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
     background: transparent !important;
   }
 
-  /* 2. Modal pratinjau kuitansi di-reset menjadi kontainer statis normal */
-  #printable-report-modal {
-    position: static !important;
-    display: block !important;
-    background: transparent !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    overflow: visible !important;
-    width: 100% !important;
-    height: auto !important;
-    inset: auto !important;
-    backdrop-filter: none !important;
-    box-shadow: none !important;
-  }
-
-  /* 3. Lembar Kuitansi / Laporan Individual */
+  /* 2. Lembar Kuitansi / Laporan Individual Sah */
   #printable-document {
     display: block !important;
     position: static !important;

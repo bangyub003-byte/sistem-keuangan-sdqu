@@ -85,6 +85,7 @@ export default function App() {
     mode: PrintMode;
     data?: any;
     month?: string;
+    hideWatermark?: boolean;
   }>({
     isOpen: false,
     mode: 'REKAP_PEMBAYARAN'
@@ -775,6 +776,7 @@ export default function App() {
               students={students}
               keuangan={keuangan}
               setting={setting}
+              hideWatermark={currentUser?.role === 'WALI' || Boolean(printConfig.hideWatermark)}
               onClose={() => setPrintConfig({ isOpen: false, mode: 'REKAP_PEMBAYARAN' })}
             />
           )}
