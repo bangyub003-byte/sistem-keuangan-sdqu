@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Student, Transaction, SchoolSetting, UserAccount, Announcement } from '../../types';
 import { PrintMode } from '../PrintReportView';
-import { calculateStudentSppStatus, getStandardTransactionTitle, formatTransactionTimestamp, isHistoricalArrearsTrx } from '../../utils/sppLogic';
+import { calculateStudentSppStatus, getStandardTransactionTitle, formatTransactionTimestamp, isHistoricalArrearsTrx, cleanTransactionTime } from '../../utils/sppLogic';
 import { createPaymentConfirmationWaUrl, createWaliToBendaharaWaUrl } from '../../utils/whatsappHelper';
 import {
   GraduationCap,
@@ -586,7 +586,7 @@ export const WaliDashboard: React.FC<WaliDashboardProps> = ({
                       <div className="text-[8.5px] font-medium text-emerald-700/90 mt-1 pt-1 border-t border-emerald-200/60 leading-tight">
                         <div className="font-semibold">{latestTrx.tanggal}</div>
                         <div className="font-mono text-[8px] text-emerald-800 font-bold">
-                          {latestTrx.waktu ? `${latestTrx.waktu} WIB` : (latestTrx.created_at?.includes(' ') ? latestTrx.created_at.split(' ')[1] : '')}
+                          {cleanTransactionTime(latestTrx.waktu) ? `${cleanTransactionTime(latestTrx.waktu)} WIB` : ''}
                         </div>
                       </div>
                     )}

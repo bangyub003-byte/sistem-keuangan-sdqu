@@ -1,6 +1,7 @@
 import { Student, Transaction, KeuanganRecord, KeuanganType, KeuanganStatus, SchoolSetting, UserAccount, ActivityLog, Announcement, KategoriDana } from '../types';
 import { INITIAL_SETTING, INITIAL_USERS, INITIAL_STUDENTS, INITIAL_TRANSACTIONS, INITIAL_KEUANGAN, INITIAL_LOGS, INITIAL_ANNOUNCEMENTS, INITIAL_KATEGORI_DANA } from '../data/initialData';
 import { APP_CONFIG } from '../config';
+import { cleanTransactionTime } from '../utils/sppLogic';
 
 const STORAGE_KEYS = {
   SETTING: 'sdq_setting_v1',
@@ -1156,18 +1157,16 @@ export class StorageService {
       const parsedTransactions: Transaction[] = Array.isArray(data.transactions) ? data.transactions.filter((t: any) => t.id_transaksi || t.nisn).map((t: any) => {
         const rawDate = String(t.tanggal || new Date().toISOString().slice(0, 10));
         let dateVal = rawDate;
-        let timeVal = t.waktu ? String(t.waktu) : (t.jam ? String(t.jam) : undefined);
+        let rawTime = t.waktu ? String(t.waktu) : (t.jam ? String(t.jam) : undefined);
         if (dateVal.includes(' ') || dateVal.includes('T')) {
           const sep = dateVal.includes('T') ? 'T' : ' ';
           const parts = dateVal.split(sep);
           dateVal = parts[0];
-          if (!timeVal && parts[1]) {
-            timeVal = parts[1].replace('Z', '').split('.')[0];
+          if (!rawTime && parts[1]) {
+            rawTime = parts[1].replace('Z', '').split('.')[0];
           }
         }
-        if (timeVal === '00:00:00' || timeVal === '00:00') {
-          timeVal = undefined;
-        }
+        const timeVal = cleanTransactionTime(rawTime) || undefined;
         return {
           id_transaksi: String(t.id_transaksi || `TRX-${Date.now()}`),
           tanggal: dateVal,
@@ -1192,18 +1191,16 @@ export class StorageService {
       const parsedKeuangan: KeuanganRecord[] = Array.isArray(data.keuangan) ? data.keuangan.filter((k: any) => k.nominal || k.keterangan).map((k: any) => {
         const rawDate = String(k.tanggal || new Date().toISOString().slice(0, 10));
         let dateVal = rawDate;
-        let timeVal = k.waktu ? String(k.waktu) : (k.jam ? String(k.jam) : undefined);
+        let rawTime = k.waktu ? String(k.waktu) : (k.jam ? String(k.jam) : undefined);
         if (dateVal.includes(' ') || dateVal.includes('T')) {
           const sep = dateVal.includes('T') ? 'T' : ' ';
           const parts = dateVal.split(sep);
           dateVal = parts[0];
-          if (!timeVal && parts[1]) {
-            timeVal = parts[1].replace('Z', '').split('.')[0];
+          if (!rawTime && parts[1]) {
+            rawTime = parts[1].replace('Z', '').split('.')[0];
           }
         }
-        if (timeVal === '00:00:00' || timeVal === '00:00') {
-          timeVal = undefined;
-        }
+        const timeVal = cleanTransactionTime(rawTime) || undefined;
         return {
           id_keuangan: String(k.id_keuangan || `KAS-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`),
           tanggal: dateVal,
@@ -1251,25 +1248,25 @@ export class StorageService {
         status_aktif: a.status_aktif !== false && a.status_aktif !== 'false' && a.status_aktif !== 0
       })) : [];
 
-      // Update penyimpanan lokal
-      if (parsedStudents.length > 0) this.saveStudents(parsedStudents);
-      if (parsedTransactions.length > 0) this.saveTransactions(parsedTransactions);
-      if (parsedKeuangan.length > 0) this.saveKeuangan(parsedKeuangan);
-      if (parsedKategoriDana.length > 0) this.saveKategoriDana(parsedKategoriDana);
-      if (parsedUsers.length > 0) this.saveUsers(parsedUsers);
-      if (parsedAnnouncements.length > 0) this.saveAnnouncements(parsedAnnouncements);
+      // Update penyimpanan lokal (selalu perbarui jika sheet ada dalam respon sinkronisasi, termasuk saat baris dihapus menjadi 0)
+      if (Array.isArray(data.students)) this.saveStudents(parsedStudents);
+      if (Array.isArray(data.transactions)) this.saveTransactions(parsedTransactions);
+      if (Array.isArray(data.keuangan)) this.saveKeuangan(parsedKeuangan);
+      if (Array.isArray(data.kategori_dana)) this.saveKategoriDana(parsedKategoriDana);
+      if (Array.isArray(data.users)) this.saveUsers(parsedUsers);
+      if (Array.isArray(data.announcements)) this.saveAnnouncements(parsedAnnouncements);
 
       return {
         success: true,
         version: remoteVersion,
         message: `Berhasil memuat ${parsedStudents.length} murid, ${parsedTransactions.length} transaksi, ${parsedKeuangan.length} kas ${parsedSetting ? '& profil lembaga' : ''} langsung dari Google Spreadsheet!`,
-        students: parsedStudents.length > 0 ? parsedStudents : undefined,
-        transactions: parsedTransactions.length > 0 ? parsedTransactions : undefined,
-        keuangan: parsedKeuangan.length > 0 ? parsedKeuangan : undefined,
-        kategori_dana: parsedKategoriDana.length > 0 ? parsedKategoriDana : undefined,
+        students: Array.isArray(data.students) ? parsedStudents : undefined,
+        transactions: Array.isArray(data.transactions) ? parsedTransactions : undefined,
+        keuangan: Array.isArray(data.keuangan) ? parsedKeuangan : undefined,
+        kategori_dana: Array.isArray(data.kategori_dana) ? parsedKategoriDana : undefined,
         setting: parsedSetting,
-        users: parsedUsers.length > 0 ? parsedUsers : undefined,
-        announcements: parsedAnnouncements.length > 0 ? parsedAnnouncements : undefined
+        users: Array.isArray(data.users) ? parsedUsers : undefined,
+        announcements: Array.isArray(data.announcements) ? parsedAnnouncements : undefined
       };
     } catch (err: any) {
       return { success: false, message: `Gagal membaca Google Spreadsheet: ${err.message}` };

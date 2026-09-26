@@ -1,4 +1,5 @@
 import { SchoolSetting, Student, Transaction } from '../types';
+import { cleanTransactionTime } from './sppLogic';
 import { StudentSppSummary } from './sppLogic';
 
 /**
@@ -40,7 +41,7 @@ Alhamdulillah, pembayaran administrasi pendidikan telah kami terima dan tercatat
 • *No. Kuitansi*: ${transaction.id_transaksi}
 • *Nama Murid*: ${student.nama} (NISN: ${student.nisn})
 • *Jenis Pembayaran*: ${transaction.jenis}${transaction.bulan ? `\n• *Periode / Bulan*: ${transaction.bulan}` : ''}
-• *Tanggal Bayar*: ${transaction.tanggal}${transaction.waktu ? ` pukul ${transaction.waktu} WIB` : ''}
+• *Tanggal Bayar*: ${transaction.tanggal}${cleanTransactionTime(transaction.waktu) ? ` pukul ${cleanTransactionTime(transaction.waktu)} WIB` : ''}
 • *Nominal Dibayar*: ${formatRupiah(transaction.nominal_bayar)}
 • *Status*: ${transaction.status === 'LUNAS' ? 'LUNAS' : `KURANG BAYAR (Sisa: ${formatRupiah(transaction.sisa)})`}
 • *Petugas Penerima*: ${transaction.petugas || 'Bendahara'}
@@ -112,7 +113,8 @@ export function createWaliToBendaharaWaUrl(
 
   let rincianText = '';
   if (transaction) {
-    const trxTime = transaction.waktu ? ` pukul ${transaction.waktu} WIB` : '';
+    const cleanTime = cleanTransactionTime(transaction.waktu);
+    const trxTime = cleanTime ? ` pukul ${cleanTime} WIB` : '';
     rincianText = `Saya bermaksud menanyakan / konfirmasi terkait transaksi pembayaran berikut:\n` +
       `• *No. Kuitansi/Transaksi*: ${transaction.id_transaksi}\n` +
       `• *Jenis Pembayaran*: ${transaction.jenis}${transaction.bulan ? ` (${transaction.bulan})` : ''}\n` +

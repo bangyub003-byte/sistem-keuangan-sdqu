@@ -106,13 +106,13 @@ export default function App() {
     try {
       const res = await StorageService.pullFromSpreadsheet(setting.gas_url);
       if (res.success) {
-        if (res.students) setStudents(res.students);
-        if (res.transactions) setTransactions(res.transactions);
-        if (res.keuangan) setKeuangan(res.keuangan);
-        if (res.kategori_dana) setKategoriDana(res.kategori_dana);
+        if (res.students !== undefined) setStudents(res.students);
+        if (res.transactions !== undefined) setTransactions(res.transactions);
+        if (res.keuangan !== undefined) setKeuangan(res.keuangan);
+        if (res.kategori_dana !== undefined) setKategoriDana(res.kategori_dana);
         if (res.setting) setSetting(res.setting);
-        if (res.users) setUsers(res.users);
-        if (res.announcements) setAnnouncements(res.announcements);
+        if (res.users !== undefined) setUsers(res.users);
+        if (res.announcements !== undefined) setAnnouncements(res.announcements);
         if (res.version) setDataVersion(res.version);
         setSyncStatus('synced');
         setSyncError(null);

@@ -44,22 +44,23 @@ export const DashboardMenu: React.FC<DashboardMenuProps> = ({
   const totalTunggakan = sppAllSummary.totalTunggakanAll;
   const countSantriNunggak = sppAllSummary.countSantriNunggak;
 
-  // Keuangan Kas Total
-  const totalMasukKas = keuangan
+  // Keuangan Kas Total (identik dengan KeuanganMenu: mengecualikan status CANCEL)
+  const validKeuangan = keuangan.filter(k => k.status !== 'CANCEL');
+  const totalMasukKas = validKeuangan
     .filter(k => k.jenis === 'MASUK')
     .reduce((sum, k) => sum + (k.nominal || 0), 0);
-  const totalKeluarKas = keuangan
+  const totalKeluarKas = validKeuangan
     .filter(k => k.jenis === 'KELUAR')
     .reduce((sum, k) => sum + (k.nominal || 0), 0);
   const saldoKas = totalMasukKas - totalKeluarKas;
 
   // Chart Data 1: Pemasukan vs Pengeluaran per Kategori
-  const kasCategories = Array.from(new Set(keuangan.map(k => k.kategori)));
+  const kasCategories = Array.from(new Set(validKeuangan.map(k => k.kategori)));
   const chartKasByCategory = kasCategories.map(cat => {
-    const masuk = keuangan
+    const masuk = validKeuangan
       .filter(k => k.kategori === cat && k.jenis === 'MASUK')
       .reduce((a, b) => a + b.nominal, 0);
-    const keluar = keuangan
+    const keluar = validKeuangan
       .filter(k => k.kategori === cat && k.jenis === 'KELUAR')
       .reduce((a, b) => a + b.nominal, 0);
     return {

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Student, Transaction, SchoolSetting } from '../../types';
 import { calculateStudentSppStatus } from '../../utils/sppLogic';
@@ -13,8 +13,16 @@ import {
   Building,
   Eye,
   ListChecks,
-  AlertTriangle
+  AlertTriangle,
+  Calendar,
+  ChevronDown,
+  Filter
 } from 'lucide-react';
+
+export const ACADEMIC_MONTHS = [
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni'
+];
 
 export interface SuratTagihanMuridData {
   student: Student;
@@ -63,6 +71,26 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
 
   // Filter option: hanya yang punya tunggakan aktif atau semua
   const [onlyWithArrears, setOnlyWithArrears] = useState<boolean>(false);
+
+  // Filter option: Tunggakan bulan apa saja yang disertakan (empty = Semua Bulan/Tahun)
+  const [selectedFilterMonths, setSelectedFilterMonths] = useState<string[]>([]);
+  const [isMonthDropdownOpen, setIsMonthDropdownOpen] = useState<boolean>(false);
+  const monthFilterRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (monthFilterRef.current && !monthFilterRef.current.contains(e.target as Node)) {
+        setIsMonthDropdownOpen(false);
+      }
+    };
+    if (isMonthDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMonthDropdownOpen]);
 
   // Status aksi cetak
   const [isPrinting, setIsPrinting] = useState<boolean>(false);
@@ -114,6 +142,10 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
     // 1. Tunggakan SPP bulan berjalan yang sudah jatuh tempo & belum lunas
     if (summary.unpaidDueMonths && summary.unpaidDueMonths.length > 0) {
       summary.unpaidDueMonths.forEach(m => {
+        // Jika filter bulan aktif, hanya sertakan jika bulan ini dipilih
+        if (selectedFilterMonths.length > 0 && !selectedFilterMonths.includes(m.monthName)) {
+          return;
+        }
         const sisaNominal = m.sisa > 0 ? m.sisa : m.tagihan;
         items.push({
           jenis: 'SPP Bulanan',
@@ -127,6 +159,12 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
     // 2. Tunggakan Manual / Historis yang masih aktif (status 'KURANG')
     const historicalUnpaid = (summary.historicalTransactions || []).filter(t => t.status === 'KURANG');
     historicalUnpaid.forEach(t => {
+      // Jika filter bulan aktif, hanya sertakan jika keterangan/bulan memuat salah satu bulan terpilih
+      if (selectedFilterMonths.length > 0) {
+        const tBulan = (t.bulan || '').toLowerCase();
+        const matchesMonth = selectedFilterMonths.some(sm => tBulan.includes(sm.toLowerCase()));
+        if (!matchesMonth) return;
+      }
       const sisaNominal = t.sisa !== undefined && t.sisa !== null ? t.sisa : Math.max(0, (t.nominal_tagihan || 0) - (t.nominal_bayar || 0));
       // Tentukan nama jenis tagihan
       let cleanJenis = (t.jenis || '').trim();
@@ -142,23 +180,25 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
       });
     });
 
-    // 3. Tunggakan non-SPP lainnya yang berstatus 'KURANG'
-    const studentTrxs = transactions.filter(
-      t => ((st.nisn && t.nisn === st.nisn) || (st.nik && t.nisn === st.nik)) && t.status === 'KURANG'
-    );
-    studentTrxs.forEach(t => {
-      const isHistorical = (summary.historicalTransactions || []).some(h => h.id_transaksi === t.id_transaksi);
-      const isSpp = (t.jenis || '').toLowerCase().includes('spp') || Boolean(t.bulan);
-      if (!isHistorical && !isSpp) {
-        const sisaNominal = t.sisa !== undefined && t.sisa !== null ? t.sisa : Math.max(0, (t.nominal_tagihan || 0) - (t.nominal_bayar || 0));
-        items.push({
-          jenis: t.jenis || 'Tagihan Lainnya',
-          periode: t.tanggal || '-',
-          nominal: sisaNominal,
-          keterangan: t.keterangan
-        });
-      }
-    });
+    // 3. Tunggakan non-SPP lainnya yang berstatus 'KURANG' (hanya bila filter bulan tidak aktif)
+    if (selectedFilterMonths.length === 0) {
+      const studentTrxs = transactions.filter(
+        t => ((st.nisn && t.nisn === st.nisn) || (st.nik && t.nisn === st.nik)) && t.status === 'KURANG'
+      );
+      studentTrxs.forEach(t => {
+        const isHistorical = (summary.historicalTransactions || []).some(h => h.id_transaksi === t.id_transaksi);
+        const isSpp = (t.jenis || '').toLowerCase().includes('spp') || Boolean(t.bulan);
+        if (!isHistorical && !isSpp) {
+          const sisaNominal = t.sisa !== undefined && t.sisa !== null ? t.sisa : Math.max(0, (t.nominal_tagihan || 0) - (t.nominal_bayar || 0));
+          items.push({
+            jenis: t.jenis || 'Tagihan Lainnya',
+            periode: t.tanggal || '-',
+            nominal: sisaNominal,
+            keterangan: t.keterangan
+          });
+        }
+      });
+    }
 
     const totalTunggakan = items.reduce((sum, item) => sum + item.nominal, 0);
 
@@ -177,7 +217,7 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
       map.set(st.id_siswa, getStudentSuratData(st));
     });
     return map;
-  }, [activeStudents, transactions, setting]);
+  }, [activeStudents, transactions, setting, selectedFilterMonths]);
 
   // Students list to display in table according to scopeMode and filters
   const displayedStudents = useMemo(() => {
@@ -532,6 +572,85 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
                   </div>
 
                   <div className="flex items-center gap-2 flex-wrap">
+                    {/* Filter Bulan Tunggakan Multi-Pilih */}
+                    <div className="relative" ref={monthFilterRef}>
+                      <button
+                        type="button"
+                        onClick={() => setIsMonthDropdownOpen(!isMonthDropdownOpen)}
+                        className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl cursor-pointer transition-all border font-bold ${
+                          selectedFilterMonths.length > 0
+                            ? 'bg-emerald-100 text-emerald-950 border-emerald-400 shadow-2xs'
+                            : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                        }`}
+                        title="Tunggakan Bulan Apa Saja yang Disertakan?"
+                      >
+                        <Calendar className="w-3.5 h-3.5 text-emerald-700" />
+                        <span className="text-[11px]">
+                          {selectedFilterMonths.length === 0
+                            ? 'Bulan: Semua Bulan/Tahun'
+                            : `Bulan: ${selectedFilterMonths.length} Bulan (${selectedFilterMonths.join(', ')})`}
+                        </span>
+                        <ChevronDown className="w-3 h-3 text-slate-500" />
+                      </button>
+
+                      {isMonthDropdownOpen && (
+                        <div className="absolute right-0 sm:left-0 top-full mt-1.5 w-64 bg-white border border-slate-200 rounded-xl shadow-xl z-30 p-2.5 animate-in fade-in zoom-in-95 duration-150">
+                          <div className="text-[11px] font-bold text-slate-800 mb-2 px-1 flex items-center justify-between border-b border-slate-100 pb-1.5">
+                            <span>Tunggakan Bulan Apa Saja?</span>
+                            {selectedFilterMonths.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedFilterMonths([])}
+                                className="text-[10px] text-emerald-700 hover:underline cursor-pointer font-bold"
+                              >
+                                Reset (Semua)
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Opsi Semua Bulan / Tahun (Default) */}
+                          <label className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50 cursor-pointer font-bold text-xs text-slate-800 border-b border-slate-100 mb-1">
+                            <input
+                              type="checkbox"
+                              checked={selectedFilterMonths.length === 0}
+                              onChange={() => setSelectedFilterMonths([])}
+                              className="rounded text-emerald-700 focus:ring-emerald-500 w-3.5 h-3.5 cursor-pointer"
+                            />
+                            <span>Semua Bulan / Tahun (Default)</span>
+                          </label>
+
+                          {/* 12 Bulan Tahun Ajaran */}
+                          <div className="max-h-48 overflow-y-auto space-y-0.5 pt-0.5">
+                            {ACADEMIC_MONTHS.map(monthName => {
+                              const isChecked = selectedFilterMonths.includes(monthName);
+                              return (
+                                <label
+                                  key={monthName}
+                                  className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50 cursor-pointer text-xs text-slate-700"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setSelectedFilterMonths(prev => [...prev, monthName]);
+                                      } else {
+                                        setSelectedFilterMonths(prev => prev.filter(m => m !== monthName));
+                                      }
+                                    }}
+                                    className="rounded text-emerald-700 focus:ring-emerald-500 w-3.5 h-3.5 cursor-pointer"
+                                  />
+                                  <span className={isChecked ? 'font-bold text-emerald-900' : ''}>
+                                    {monthName}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
                     {/* PENYEMPURNAAN 1: Filter Otomatis "Hanya yang ada tunggakan" */}
                     <label className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl cursor-pointer transition-all border font-bold ${
                       onlyWithArrears

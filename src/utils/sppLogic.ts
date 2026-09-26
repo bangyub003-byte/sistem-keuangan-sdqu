@@ -545,6 +545,60 @@ export function calculateAllStudentsSppSummary(
 }
 
 /**
+ * Membersihkan dan memformat string waktu transaksi menjadi jam saja (HH:mm:ss atau HH:mm)
+ * Mencegah bug epoch date Google Sheets (1899-12-30) dan serial number date.
+ */
+export function cleanTransactionTime(rawTime?: any): string {
+  if (!rawTime) return '';
+  let str = String(rawTime).trim();
+  if (!str) return '';
+
+  // 1. Tangani bug epoch 1899 dari Google Sheets (misal: "1899-12-30 09:59:31" atau "1899-12-30T09:59:31.000Z")
+  if (str.includes('1899') || str.includes('1900')) {
+    const match = str.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+    if (match) {
+      str = match[1];
+    } else {
+      return '';
+    }
+  }
+
+  // 2. Tangani string tanggal-waktu ISO atau spasi biasa (misal: "2026-09-14 09:59:31")
+  if (str.includes('T') || (str.includes(' ') && str.includes('-'))) {
+    const match = str.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+    if (match) {
+      str = match[1];
+    }
+  }
+
+  // 3. Tangani serial fraction number hari dari Excel/Google Sheets (misal: 0.41633)
+  if (!isNaN(Number(str)) && Number(str) > 0 && Number(str) < 1) {
+    const totalSeconds = Math.round(Number(str) * 86400);
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    str = `${pad(h)}:${pad(m)}:${pad(s)}`;
+  }
+
+  // 4. Normalisasi format HH:mm:ss atau HH:mm
+  const finalMatch = str.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (finalMatch) {
+    const h = finalMatch[1].padStart(2, '0');
+    const m = finalMatch[2];
+    const s = finalMatch[3] ? `:${finalMatch[3]}` : '';
+    str = `${h}:${m}${s}`;
+  }
+
+  // Abaikan tengah malam default 00:00:00
+  if (str === '00:00:00' || str === '00:00') {
+    return '';
+  }
+
+  return str;
+}
+
+/**
  * Format real-time timestamp seragam di seluruh dashboard (tanggal & jam:menit:detik WIB)
  */
 export function formatTransactionTimestamp(
@@ -566,13 +620,16 @@ export function formatTransactionTimestamp(
     timePart = String(waktu || '').trim();
   }
 
+  // Bersihkan waktu dari bug 1899-12-30 atau format tanggal penuh
+  timePart = cleanTransactionTime(timePart);
+
   // Handle jika tanggal mengandung waktu ISO atau spasi e.g. "2026-09-12 14:30:00"
   if (datePart.includes('T') || datePart.includes(' ')) {
     const separator = datePart.includes('T') ? 'T' : ' ';
     const parts = datePart.split(separator);
     datePart = parts[0];
     if (!timePart && parts[1]) {
-      timePart = parts[1].replace('Z', '').split('.')[0];
+      timePart = cleanTransactionTime(parts[1]);
     }
   }
 
@@ -587,7 +644,7 @@ export function formatTransactionTimestamp(
   }
 
   const timeDisplay = timePart ? `${timePart} WIB` : '';
-  const fullDisplay = timeDisplay ? `${datePart} ${timeDisplay}` : datePart;
+  const fullDisplay = timeDisplay ? `${datePart} (${timeDisplay})` : datePart;
 
   return {
     dateDisplay: datePart || '-',

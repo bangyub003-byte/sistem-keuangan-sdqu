@@ -186,7 +186,8 @@ html.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
     display: none !important;
   }
 
-  /* Jika sedang membuka modal cetak surat tagihan massal, sembunyikan container root agar tidak ada halaman kosong */
+  /* Jika sedang mencetak dokumen kuitansi atau surat tagihan massal, sembunyikan container root agar tidak ada halaman kosong */
+  body:has(#printable-document) #root,
   body:has(#printable-surat-massal) #root {
     display: none !important;
   }
