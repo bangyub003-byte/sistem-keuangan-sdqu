@@ -662,6 +662,23 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
                 />
               </div>
 
+              {/* Petugas Pencatat (Selalu user login saat ini) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  Petugas Pencatat
+                </label>
+                <input
+                  type="text"
+                  readOnly
+                  disabled
+                  value={operatorName || 'Petugas'}
+                  className="w-full px-3 py-2 text-xs font-bold bg-slate-100 text-slate-700 border border-slate-300 rounded-lg cursor-not-allowed select-none"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Otomatis terisi dari nama user akun yang sedang login saat ini.
+                </p>
+              </div>
+
               {/* Action Buttons */}
               <div className="pt-2 flex items-center gap-3">
                 <button

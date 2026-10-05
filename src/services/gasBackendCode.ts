@@ -116,6 +116,7 @@ function perbaikiSemuaHeader() {
 
       if (sheetName === "USER") {
         sheet.appendRow(["USR-001", "bendahara", "123", "Usth. Nur Khasanah (Bendahara)", "BENDAHARA", "", ""]);
+        sheet.appendRow(["USR-003", "suranto", "123", "Suranto", "BENDAHARA", "", ""]);
         sheet.appendRow(["USR-002", "kepsek", "123", "Ust. H. Ahmad Mufid (Kepala Sekolah)", "KEPSEK", "", ""]);
       } else if (sheetName === "KATEGORI_DANA") {
         var defaultKategori = [
@@ -396,6 +397,7 @@ function checkAndInitSheets(ss) {
 
       if (sheetName === "USER") {
         sheet.appendRow(["USR-001", "bendahara", "123", "Usth. Nur Khasanah (Bendahara)", "BENDAHARA", "", ""]);
+        sheet.appendRow(["USR-003", "suranto", "123", "Suranto", "BENDAHARA", "", ""]);
         sheet.appendRow(["USR-002", "kepsek", "123", "Ust. H. Ahmad Mufid (Kepala Sekolah)", "KEPSEK", "", ""]);
       }
       if (sheetName === "KATEGORI_DANA") {

@@ -110,7 +110,13 @@ export class StorageService {
       const data = localStorage.getItem(STORAGE_KEYS.USERS);
       if (!data) return INITIAL_USERS;
       const parsed = JSON.parse(data);
-      return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_USERS;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // Pastikan akun default seperti Suranto (USR-003) selalu ada dan tidak hilang
+        const existingMap = new Set(parsed.map((u: any) => String(u.username || '').toLowerCase()));
+        const missing = INITIAL_USERS.filter(u => !existingMap.has(u.username.toLowerCase()));
+        return [...parsed, ...missing];
+      }
+      return INITIAL_USERS;
     } catch {
       return INITIAL_USERS;
     }
@@ -1236,6 +1242,14 @@ export class StorageService {
         nisn: u.nisn ? String(u.nisn) : undefined,
         nik: u.nik ? String(u.nik) : undefined
       })) : [];
+
+      // Pastikan akun bawaan sistem (termasuk Suranto) tetap ada jika belum terdaftar di Sheet USER
+      const existingUsernames = new Set(parsedUsers.map(u => u.username.toLowerCase()));
+      INITIAL_USERS.forEach(iu => {
+        if (!existingUsernames.has(iu.username.toLowerCase())) {
+          parsedUsers.push(iu);
+        }
+      });
 
       // Parse Pengumuman
       const parsedAnnouncements: Announcement[] = Array.isArray(data.announcements) ? data.announcements.filter((a: any) => a.judul || a.isi).map((a: any) => ({

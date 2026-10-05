@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Student, Transaction, SchoolSetting } from '../../types';
+import { StorageService } from '../../services/storageService';
 import { calculateStudentSppStatus } from '../../utils/sppLogic';
 import {
   X,
@@ -53,10 +54,22 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
   onClose,
   students = [],
   transactions = [],
-  setting,
+  setting: propSetting,
   initialClass = '',
   onUpdateSetting
 }) => {
+  // Pastikan SELALU mengambil setting paling mutakhir dari state prop ataupun local storage
+  const setting = useMemo(() => {
+    const cached = StorageService.getSetting();
+    return {
+      ...cached,
+      ...propSetting,
+      nama_bendahara: (propSetting?.nama_bendahara && propSetting.nama_bendahara.trim()) || cached?.nama_bendahara || 'Bendahara',
+      nama_kepsek: (propSetting?.nama_kepsek && propSetting.nama_kepsek.trim()) || cached?.nama_kepsek || 'Kepala Sekolah',
+      nipy_bendahara: propSetting?.nipy_bendahara ?? cached?.nipy_bendahara,
+      nipy_kepala_sekolah: propSetting?.nipy_kepala_sekolah ?? cached?.nipy_kepala_sekolah
+    };
+  }, [propSetting]);
   // Mode pemilihan cakupan: 'KELAS' | 'MANUAL'
   const [scopeMode, setScopeMode] = useState<'KELAS' | 'MANUAL'>('KELAS');
   const [selectedClass, setSelectedClass] = useState<string>(initialClass || '');

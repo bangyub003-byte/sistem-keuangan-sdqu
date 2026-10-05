@@ -467,6 +467,23 @@ export const CatatTunggakanManualModal: React.FC<CatatTunggakanManualModalProps>
                       className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-slate-800"
                     />
                   </div>
+
+                  {/* Petugas Pencatat (Selalu user login saat ini) */}
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      Petugas Pencatat
+                    </label>
+                    <input
+                      type="text"
+                      readOnly
+                      disabled
+                      value={operatorName || 'Petugas'}
+                      className="w-full px-3 py-2 text-xs font-bold bg-slate-100 text-slate-700 border border-slate-300 rounded-lg cursor-not-allowed select-none"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Otomatis terisi dari nama user akun yang sedang login saat ini.
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -817,10 +834,14 @@ export const CatatTunggakanManualModal: React.FC<CatatTunggakanManualModalProps>
                     <strong className="text-slate-900 text-sm font-bold">{effectivePeriode}</strong>
                   </div>
                   <div>
+                    <span className="text-slate-500 block">Petugas Pencatat:</span>
+                    <strong className="text-slate-900 text-sm font-bold">{operatorName || 'Petugas'}</strong>
+                  </div>
+                  <div>
                     <span className="text-slate-500 block">Jumlah Murid Terkena:</span>
                     <strong className="text-amber-900 text-sm font-extrabold">{includedItems.length} Santri</strong>
                   </div>
-                  <div>
+                  <div className="col-span-2">
                     <span className="text-slate-500 block">Total Nominal Gabungan:</span>
                     <strong className="text-emerald-800 text-base font-black font-mono">
                       {formatRupiah(totalAkumulasiNominal)}

@@ -38,6 +38,13 @@ export const INITIAL_USERS: UserAccount[] = [
     role: "BENDAHARA"
   },
   {
+    id_user: "USR-003",
+    username: "suranto",
+    password: "123",
+    nama: "Suranto",
+    role: "BENDAHARA"
+  },
+  {
     id_user: "USR-002",
     username: "kepsek",
     password: "123",

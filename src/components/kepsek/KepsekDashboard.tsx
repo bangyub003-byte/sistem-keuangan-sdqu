@@ -11,6 +11,7 @@ interface KepsekDashboardProps {
   transactions: Transaction[];
   keuangan: KeuanganRecord[];
   setting: SchoolSetting;
+  operatorName?: string;
   onOpenPrintReport: (mode: PrintMode) => void;
   onOpenKartuSpp?: (student: Student) => void;
   onOpenReceipt?: (trx: Transaction) => void;
@@ -21,6 +22,7 @@ export const KepsekDashboard: React.FC<KepsekDashboardProps> = ({
   transactions = [],
   keuangan = [],
   setting,
+  operatorName,
   onOpenPrintReport,
   onOpenKartuSpp,
   onOpenReceipt
@@ -757,7 +759,7 @@ export const KepsekDashboard: React.FC<KepsekDashboardProps> = ({
           setting={setting}
           onClose={() => setSelectedDetailStudent(null)}
           isReadOnly={true}
-          operatorName={setting.nama_kepsek || 'Kepala Sekolah'}
+          operatorName={operatorName || setting.nama_kepsek || 'Kepala Sekolah'}
           onOpenKartuSpp={onOpenKartuSpp}
           onOpenReceipt={onOpenReceipt}
         />

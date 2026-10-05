@@ -112,7 +112,21 @@ export default function App() {
         if (res.keuangan !== undefined) setKeuangan(res.keuangan);
         if (res.kategori_dana !== undefined) setKategoriDana(res.kategori_dana);
         if (res.setting) setSetting(res.setting);
-        if (res.users !== undefined) setUsers(res.users);
+        if (res.users !== undefined) {
+          setUsers(res.users);
+          setCurrentUser(prevUser => {
+            if (!prevUser) return null;
+            const updated = res.users?.find(
+              u => u.id_user === prevUser.id_user || u.username.toLowerCase() === prevUser.username.toLowerCase()
+            );
+            if (updated) {
+              const freshUser = { ...prevUser, ...updated };
+              StorageService.saveCurrentUser(freshUser);
+              return freshUser;
+            }
+            return prevUser;
+          });
+        }
         if (res.announcements !== undefined) setAnnouncements(res.announcements);
         if (res.version) setDataVersion(res.version);
         setSyncStatus('synced');
@@ -263,7 +277,21 @@ export default function App() {
       if (res.transactions) setTransactions(res.transactions);
       if (res.keuangan) setKeuangan(res.keuangan);
       if (res.setting) setSetting(res.setting);
-      if (res.users) setUsers(res.users);
+      if (res.users) {
+        setUsers(res.users);
+        setCurrentUser(prevUser => {
+          if (!prevUser) return null;
+          const updated = res.users?.find(
+            u => u.id_user === prevUser.id_user || u.username.toLowerCase() === prevUser.username.toLowerCase()
+          );
+          if (updated) {
+            const freshUser = { ...prevUser, ...updated };
+            StorageService.saveCurrentUser(freshUser);
+            return freshUser;
+          }
+          return prevUser;
+        });
+      }
       if (res.announcements) setAnnouncements(res.announcements);
       if (res.version) setDataVersion(res.version);
       setSyncStatus('synced');
@@ -715,6 +743,7 @@ export default function App() {
                 transactions={transactions}
                 keuangan={keuangan}
                 setting={setting}
+                operatorName={currentUser?.nama || 'Kepala Sekolah'}
                 onOpenPrintReport={handleOpenPrintReport}
                 onOpenKartuSpp={handleOpenKartuSpp}
                 onOpenReceipt={handleOpenReceipt}

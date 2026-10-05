@@ -49,7 +49,7 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
   student,
   students = [],
   transactions,
-  setting,
+  setting: propSetting,
   onClose,
   onUpdateStudent,
   onNavigateToPayment,
@@ -61,6 +61,18 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
   onBatchRecordManualArrears,
   isReadOnly = false
 }) => {
+  // Pastikan SELALU mengambil setting paling mutakhir dari state prop ataupun local storage
+  const setting = useMemo(() => {
+    const cached = StorageService.getSetting();
+    return {
+      ...cached,
+      ...propSetting,
+      nama_bendahara: (propSetting?.nama_bendahara && propSetting.nama_bendahara.trim()) || cached?.nama_bendahara || 'Bendahara',
+      nama_kepsek: (propSetting?.nama_kepsek && propSetting.nama_kepsek.trim()) || cached?.nama_kepsek || 'Kepala Sekolah',
+      nipy_bendahara: propSetting?.nipy_bendahara ?? cached?.nipy_bendahara,
+      nipy_kepala_sekolah: propSetting?.nipy_kepala_sekolah ?? cached?.nipy_kepala_sekolah
+    };
+  }, [propSetting]);
   const [activeTab, setActiveTab] = useState<'REKAP' | 'TRANSAKSI' | 'EDIT_SPP' | 'EDIT_IDENTITAS'>('REKAP');
   
   // Edit Identitas Form State
@@ -1299,6 +1311,23 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
                   placeholder="Misal: Diterima tunai oleh Bendahara di kantor"
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 text-slate-800"
                 />
+              </div>
+
+              {/* Petugas Pencatat (Selalu user login saat ini) */}
+              <div>
+                <label className="block font-bold text-slate-700 uppercase mb-1">
+                  Petugas Pencatat
+                </label>
+                <input
+                  type="text"
+                  readOnly
+                  disabled
+                  value={operatorName || 'Petugas'}
+                  className="w-full px-3 py-2 text-xs font-bold bg-slate-100 text-slate-700 border border-slate-300 rounded-lg cursor-not-allowed select-none"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Otomatis terisi dari nama user akun yang sedang login saat ini.
+                </p>
               </div>
 
               {settleSuccess && (

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { SchoolSetting, Transaction, KeuanganRecord, Student } from '../types';
+import { StorageService } from '../services/storageService';
 import {
   calculateStudentSppStatus,
   calculateAllStudentsSppSummary,
@@ -40,7 +41,7 @@ interface PrintReportViewProps {
 
 export const PrintReportView: React.FC<PrintReportViewProps> = ({
   mode,
-  setting,
+  setting: propSetting,
   onClose,
   transaction: propTransaction,
   student: propStudent,
@@ -53,6 +54,19 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
   hideWatermark = false
 }) => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Pastikan SELALU mengambil setting paling mutakhir dari state prop ataupun local storage
+  const setting = useMemo(() => {
+    const cached = StorageService.getSetting();
+    return {
+      ...cached,
+      ...propSetting,
+      nama_bendahara: (propSetting?.nama_bendahara && propSetting.nama_bendahara.trim()) || cached?.nama_bendahara || 'Bendahara',
+      nama_kepsek: (propSetting?.nama_kepsek && propSetting.nama_kepsek.trim()) || cached?.nama_kepsek || 'Kepala Sekolah',
+      nipy_bendahara: propSetting?.nipy_bendahara ?? cached?.nipy_bendahara,
+      nipy_kepala_sekolah: propSetting?.nipy_kepala_sekolah ?? cached?.nipy_kepala_sekolah
+    };
+  }, [propSetting]);
 
   const safeTransactions = Array.isArray(transactions) ? transactions : [];
   const safeStudents = Array.isArray(students) ? students : [];
