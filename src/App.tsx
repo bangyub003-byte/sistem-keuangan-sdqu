@@ -547,6 +547,31 @@ export default function App() {
       setSyncStatus('synced');
       if (res.gasResult?.version) setDataVersion(res.gasResult.version);
     }
+    return res.record;
+  };
+
+  // Keuangan Batch Add (Multi-Item Dalam Satu Kuitansi)
+  const handleAddKeuanganBatch = async (
+    records: Array<Omit<KeuanganRecord, 'id_keuangan'>>,
+    sharedKuitansiId: string
+  ) => {
+    setSyncStatus('syncing');
+    setSyncError(null);
+    const petugasName = currentUser?.nama || 'Bendahara';
+    const recordsWithPetugas = records.map(r => ({
+      ...r,
+      petugas: petugasName
+    }));
+    const res = await StorageService.addKeuanganBatch(recordsWithPetugas, sharedKuitansiId, petugasName);
+    setKeuangan(StorageService.getKeuangan());
+    if (res.gasResult && res.gasResult.status === 'error') {
+      setSyncStatus('error');
+      setSyncError(res.gasResult.message);
+    } else {
+      setSyncStatus('synced');
+      if (res.gasResult?.version) setDataVersion(res.gasResult.version);
+    }
+    return res.records;
   };
 
   // Keuangan Cancel
@@ -744,6 +769,7 @@ export default function App() {
                     keuangan={keuangan}
                     operatorName={currentUser.nama}
                     onAddKeuangan={handleAddKeuangan}
+                    onAddKeuanganBatch={handleAddKeuanganBatch}
                     onCancelKeuangan={handleCancelKeuangan}
                     kategoriDana={kategoriDana}
                     onAddKategoriDana={handleAddKategoriDana}

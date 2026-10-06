@@ -876,6 +876,62 @@ export class StorageService {
     return { record: newRec, gasResult };
   }
 
+  static async addKeuanganBatch(
+    records: Array<Omit<KeuanganRecord, 'id_keuangan'>>,
+    sharedKuitansiId: string,
+    operator: string
+  ): Promise<{
+    records: KeuanganRecord[];
+    gasResult?: any;
+  }> {
+    const keuangan = this.getKeuangan();
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+    const newRecords: KeuanganRecord[] = records.map((record, idx) => {
+      let fullDate = record.tanggal || dateStr;
+      if (fullDate.length === 10) {
+        fullDate = `${fullDate} ${record.waktu || timeStr}`;
+      }
+
+      return {
+        ...record,
+        id_keuangan: `KUG-${Date.now()}-${idx + 1}`,
+        tanggal: fullDate,
+        waktu: record.waktu || timeStr,
+        petugas: operator || record.petugas || 'Bendahara',
+        status: record.status || 'ACTIVE',
+        id_kategori: record.id_kategori || '',
+        id_kuitansi_gabungan: sharedKuitansiId,
+        bukti: formatDriveUrl(record.bukti)
+      };
+    });
+
+    this.saveKeuangan([...newRecords, ...keuangan]);
+    const totalNominal = newRecords.reduce((sum, r) => sum + (Number(r.nominal) || 0), 0);
+    const sampleJenis = newRecords[0]?.jenis || 'MASUK';
+    this.addLog(
+      operator,
+      `Input Kas ${sampleJenis} Multi-Item (${newRecords.length} item) Total Rp${totalNominal.toLocaleString('id-ID')} [No: ${sharedKuitansiId}]`
+    );
+
+    const setting = this.getSetting();
+    let gasResult: any = null;
+    if (setting.gas_url) {
+      for (const rec of newRecords) {
+        try {
+          await this.callGasApi(setting.gas_url, 'ADD_KEUANGAN', rec);
+        } catch (e) {
+          console.warn('Failed syncing individual batch kas record to GAS:', e);
+        }
+      }
+    }
+
+    return { records: newRecords, gasResult };
+  }
+
   static async cancelKeuangan(id_keuangan: string, reason: string, operator: string): Promise<{
     gasResult?: any;
   }> {

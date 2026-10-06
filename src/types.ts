@@ -80,6 +80,7 @@ export interface KeuanganRecord {
   status?: KeuanganStatus;
   alasan_batal?: string;
   id_kategori?: string;
+  id_kuitansi_gabungan?: string; // Shared receipt grouping ID for multi-item cash records
 }
 
 export interface SchoolSetting {

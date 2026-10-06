@@ -1,11 +1,24 @@
 import React, { useState, useMemo } from 'react';
 import { KeuanganRecord, KeuanganType, KategoriDana } from '../../types';
-import { Plus, ArrowDownLeft, ArrowUpRight, Filter, Search, FileText, Image, Calendar, Tag, Wallet, Check, AlertTriangle, X, Printer, CheckCircle } from 'lucide-react';
+import { Plus, ArrowDownLeft, ArrowUpRight, Filter, Search, FileText, Image, Calendar, Tag, Wallet, Check, AlertTriangle, X, Printer, CheckCircle, Trash2 } from 'lucide-react';
+
+export interface KasItemRow {
+  id: string;
+  kategori: string;
+  isCustomKategori: boolean;
+  customKategoriInput: string;
+  selectedSumberDana: string;
+  isAddingNewSumberDana: boolean;
+  newSumberDanaInput: string;
+  nominal: number;
+  keterangan: string;
+}
 
 interface KeuanganMenuProps {
   keuangan: KeuanganRecord[];
   operatorName: string;
   onAddKeuangan: (rec: Omit<KeuanganRecord, 'id_keuangan'>) => void;
+  onAddKeuanganBatch?: (records: Array<Omit<KeuanganRecord, 'id_keuangan'>>, sharedKuitansiId: string) => Promise<KeuanganRecord[]>;
   onCancelKeuangan?: (id: string, reason: string) => void;
   kategoriDana?: KategoriDana[];
   onAddKategoriDana?: (cat: { nama_kategori: string; keterangan?: string }) => void;
@@ -16,6 +29,7 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
   keuangan = [],
   operatorName,
   onAddKeuangan,
+  onAddKeuanganBatch,
   onCancelKeuangan,
   kategoriDana = [],
   onAddKategoriDana,
@@ -43,15 +57,40 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
   // Form input state
   const todayStr = new Date().toISOString().slice(0, 10);
   const [formTanggal, setFormTanggal] = useState(todayStr);
-  const [formKategori, setFormKategori] = useState('');
-  const [isCustomKategori, setIsCustomKategori] = useState(false);
-  const [customKategoriInput, setCustomKategoriInput] = useState('');
-  const [selectedSumberDana, setSelectedSumberDana] = useState('KAT-OPERASIONAL');
-  const [isAddingNewSumberDana, setIsAddingNewSumberDana] = useState(false);
-  const [newSumberDanaInput, setNewSumberDanaInput] = useState('');
-  const [formNominal, setFormNominal] = useState<number>(0);
-  const [formKeterangan, setFormKeterangan] = useState('');
   const [formBukti, setFormBukti] = useState('');
+
+  const createDefaultItem = (type: KeuanganType): KasItemRow => ({
+    id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    kategori: type === 'MASUK' ? 'Donasi' : 'Operasional',
+    isCustomKategori: false,
+    customKategoriInput: '',
+    selectedSumberDana: 'KAT-OPERASIONAL',
+    isAddingNewSumberDana: false,
+    newSumberDanaInput: '',
+    nominal: 0,
+    keterangan: ''
+  });
+
+  const [kasItems, setKasItems] = useState<KasItemRow[]>([
+    createDefaultItem('MASUK')
+  ]);
+
+  const handleAddItem = () => {
+    setKasItems(prev => [...prev, createDefaultItem(activeTab)]);
+  };
+
+  const handleRemoveItem = (id: string) => {
+    if (kasItems.length <= 1) return;
+    setKasItems(prev => prev.filter(it => it.id !== id));
+  };
+
+  const handleUpdateItem = (id: string, updates: Partial<KasItemRow>) => {
+    setKasItems(prev => prev.map(it => it.id === id ? { ...it, ...updates } : it));
+  };
+
+  const totalNominalAll = useMemo(() => {
+    return kasItems.reduce((acc, it) => acc + (Number(it.nominal) || 0), 0);
+  }, [kasItems]);
 
   // Active Kategori Dana List
   const activeKategoriList = useMemo(() => {
@@ -98,93 +137,113 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
   const openAddModal = (type: KeuanganType) => {
     setActiveTab(type);
     setFormTanggal(todayStr);
-    const defaultCat = type === 'MASUK' ? 'Donasi' : 'Operasional';
-    setFormKategori(defaultCat);
-    setIsCustomKategori(false);
-    setCustomKategoriInput('');
-    setSelectedSumberDana('KAT-OPERASIONAL');
-    setIsAddingNewSumberDana(false);
-    setNewSumberDanaInput('');
-    setFormNominal(0);
-    setFormKeterangan('');
     setFormBukti('');
+    setKasItems([createDefaultItem(type)]);
     setIsModalOpen(true);
   };
 
-  const handleAddNewSumberDana = async () => {
-    const name = newSumberDanaInput.trim();
-    if (!name) return;
+  const handleAddNewSumberDanaForItem = async (itemId: string, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
 
     if (onAddKategoriDana) {
       await onAddKategoriDana({
-        nama_kategori: name,
+        nama_kategori: trimmed,
         keterangan: 'Ditambahkan via Kas Keluar'
       });
     }
 
-    const genId = `KAT-${name.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10)}`;
-    setSelectedSumberDana(genId);
-    setNewSumberDanaInput('');
-    setIsAddingNewSumberDana(false);
+    const genId = `KAT-${trimmed.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10)}`;
+    handleUpdateItem(itemId, {
+      selectedSumberDana: genId,
+      newSumberDanaInput: '',
+      isAddingNewSumberDana: false
+    });
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    const finalKategori = isCustomKategori ? customKategoriInput.trim() : formKategori;
-    if (!finalKategori) {
-      alert('Pilih atau buat kategori keuangan.');
-      return;
-    }
-    if (formNominal <= 0) {
-      alert('Nominal harus lebih dari Rp 0');
+    if (kasItems.length === 0) {
+      alert('Tambahkan minimal 1 baris item kas.');
       return;
     }
 
-    if (isCustomKategori && onAddKategoriDana && !dynamicKatNames.includes(finalKategori)) {
-      onAddKategoriDana({
-        nama_kategori: finalKategori,
-        keterangan: `Dibuat via form kas ${activeTab.toLowerCase()}`
-      });
+    // Validasi tiap baris item
+    for (let i = 0; i < kasItems.length; i++) {
+      const it = kasItems[i];
+      const finalKat = it.isCustomKategori ? it.customKategoriInput.trim() : it.kategori.trim();
+      if (!finalKat) {
+        alert(`Item ke-${i + 1}: Tentukan kategori keuangan.`);
+        return;
+      }
+      if ((it.nominal || 0) <= 0) {
+        alert(`Item ke-${i + 1} (${finalKat}): Nominal transaksi harus lebih dari Rp 0.`);
+        return;
+      }
+      if (!it.keterangan.trim()) {
+        alert(`Item ke-${i + 1} (${finalKat}): Tuliskan uraian / keterangan transaksi.`);
+        return;
+      }
     }
 
-    const chosenIdKategori = activeTab === 'KELUAR'
-      ? selectedSumberDana
-      : (activeKategoriList.find(kd => kd.nama_kategori.toLowerCase() === finalKategori.toLowerCase())?.id_kategori || 'KAT-DONASI');
+    // Daftarkan kategori baru jika ada
+    kasItems.forEach(it => {
+      const finalKat = it.isCustomKategori ? it.customKategoriInput.trim() : it.kategori.trim();
+      if (it.isCustomKategori && onAddKategoriDana && !dynamicKatNames.includes(finalKat)) {
+        onAddKategoriDana({
+          nama_kategori: finalKat,
+          keterangan: `Dibuat via form kas ${activeTab.toLowerCase()}`
+        });
+      }
+    });
 
     const now = new Date();
     const pad = (n: number) => n.toString().padStart(2, '0');
     const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    const sharedKuitansiId = `KAS-${now.getFullYear()}-${Date.now().toString().slice(-6)}`;
 
-    const newRecord: KeuanganRecord = {
-      id_keuangan: `KUG-${Date.now()}`,
-      tanggal: formTanggal,
-      waktu: timeStr,
-      jenis: activeTab,
-      kategori: finalKategori,
-      id_kategori: chosenIdKategori,
-      nominal: formNominal,
-      keterangan: formKeterangan,
-      bukti: formBukti,
-      petugas: operatorName,
-      status: 'ACTIVE'
-    };
+    const recordsToSave = kasItems.map((it) => {
+      const finalKat = it.isCustomKategori ? it.customKategoriInput.trim() : it.kategori.trim();
+      const chosenIdKategori = activeTab === 'KELUAR'
+        ? it.selectedSumberDana
+        : (activeKategoriList.find(kd => kd.nama_kategori.toLowerCase() === finalKat.toLowerCase())?.id_kategori || 'KAT-DONASI');
 
-    onAddKeuangan({
-      tanggal: formTanggal,
-      waktu: timeStr,
-      jenis: activeTab,
-      kategori: finalKategori,
-      id_kategori: chosenIdKategori,
-      nominal: formNominal,
-      keterangan: formKeterangan,
-      bukti: formBukti,
-      petugas: operatorName,
-      status: 'ACTIVE'
+      return {
+        tanggal: formTanggal,
+        waktu: timeStr,
+        jenis: activeTab,
+        kategori: finalKat,
+        id_kategori: chosenIdKategori,
+        nominal: Number(it.nominal) || 0,
+        keterangan: it.keterangan.trim(),
+        bukti: formBukti,
+        petugas: operatorName,
+        status: 'ACTIVE' as const,
+        id_kuitansi_gabungan: sharedKuitansiId
+      };
     });
+
+    let savedRepresentativeRecord: KeuanganRecord | null = null;
+
+    if (recordsToSave.length > 1 && onAddKeuanganBatch) {
+      const savedList = await onAddKeuanganBatch(recordsToSave, sharedKuitansiId);
+      savedRepresentativeRecord = savedList[0] || null;
+    } else {
+      // Simpan satu per satu atau fallback jika hanya 1 baris
+      for (const rec of recordsToSave) {
+        onAddKeuangan(rec);
+      }
+      savedRepresentativeRecord = {
+        ...recordsToSave[0],
+        id_keuangan: `KUG-${Date.now()}`
+      };
+    }
 
     setIsModalOpen(false);
     // Tampilkan opsi cetak kuitansi kas secara opsional (Prioritas 3)
-    setJustSavedKasRecord(newRecord);
+    if (savedRepresentativeRecord) {
+      setJustSavedKasRecord(savedRepresentativeRecord);
+    }
   };
 
   const handleConfirmCancel = (e: React.FormEvent) => {
@@ -538,7 +597,7 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
       {/* Input Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
+          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden max-h-[92vh] flex flex-col">
             <div className={`p-5 text-white flex items-center justify-between shrink-0 ${
               activeTab === 'MASUK' ? 'bg-emerald-800' : 'bg-rose-800'
             }`}>
@@ -547,7 +606,7 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
                   {activeTab === 'MASUK' ? 'Input Kas Masuk (Pemasukan)' : 'Input Kas Keluar (Pengeluaran)'}
                 </h3>
                 <p className="text-xs text-white/80 mt-0.5">
-                  Bendahara dapat memilih kategori yang ada atau membuat kategori sendiri
+                  Dukung pencatatan multi-item dalam satu sesi & satu kuitansi resmi
                 </p>
               </div>
               <button
@@ -560,139 +619,208 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
 
             <form onSubmit={handleSave} className="flex flex-col flex-1 overflow-hidden min-h-0">
               <div className="p-6 space-y-4 overflow-y-auto flex-1">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                      Tanggal Transaksi
-                    </label>
-                    <input
-                      type="date"
-                      required
-                      value={formTanggal}
-                      onChange={(e) => setFormTanggal(e.target.value)}
-                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                      Nominal (Rp) <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      required
-                      value={formNominal || ''}
-                      onChange={(e) => setFormNominal(Number(e.target.value))}
-                      placeholder="Contoh: 1500000"
-                      className="w-full px-3 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
-                    />
-                  </div>
+                {/* Tanggal Transaksi & Info Utama */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    Tanggal Transaksi
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={formTanggal}
+                    onChange={(e) => setFormTanggal(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
+                  />
                 </div>
 
-                {/* Kategori with Custom Category feature */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-bold text-slate-700 uppercase">
-                      Kategori {activeTab === 'MASUK' ? 'Pemasukan' : 'Pengeluaran'}
+                {/* Daftar Item Transaksi Kas (Multi-Item) */}
+                <div className="space-y-3 pt-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      Rincian Item Kas ({kasItems.length} Item)
                     </label>
                     <button
                       type="button"
-                      onClick={() => setIsCustomKategori(!isCustomKategori)}
-                      className="text-[10px] font-bold text-emerald-700 hover:underline cursor-pointer"
+                      onClick={handleAddItem}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-lg border border-emerald-300 transition-colors cursor-pointer"
                     >
-                      {isCustomKategori ? 'Pilih dari Kategori Ada' : '+ Buat Kategori Baru'}
+                      <Plus className="w-3.5 h-3.5 text-emerald-700" />
+                      <span>+ Tambah Item</span>
                     </button>
                   </div>
 
-                  {isCustomKategori ? (
-                    <input
-                      type="text"
-                      required
-                      value={customKategoriInput}
-                      onChange={(e) => setCustomKategoriInput(e.target.value)}
-                      placeholder="Tulis nama kategori baru..."
-                      className="w-full px-3 py-2 text-xs bg-white border border-emerald-500 ring-1 ring-emerald-500 rounded-lg focus:outline-hidden"
-                    />
-                  ) : (
-                    <select
-                      value={formKategori}
-                      onChange={(e) => setFormKategori(e.target.value)}
-                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
+                  {kasItems.map((item, index) => (
+                    <div
+                      key={item.id}
+                      className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3 relative"
                     >
-                      {availableCategories.map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
-                    </select>
-                  )}
-                </div>
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                        <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <span className={`w-5 h-5 rounded-full text-white text-[11px] flex items-center justify-center font-bold ${
+                            activeTab === 'MASUK' ? 'bg-emerald-700' : 'bg-rose-700'
+                          }`}>
+                            {index + 1}
+                          </span>
+                          Item #{index + 1}
+                        </span>
 
-                {/* Sumber Dana (Diambil dari Dana - WAJIB saat Kas Keluar) */}
-                {activeTab === 'KELUAR' && (
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="text-xs font-bold text-slate-700 uppercase">
-                        Diambil dari Dana <span className="text-rose-500">*</span>
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setIsAddingNewSumberDana(!isAddingNewSumberDana)}
-                        className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer"
-                      >
-                        {isAddingNewSumberDana ? 'Pilih dari Dropdown' : '+ Tambah Kategori Baru'}
-                      </button>
-                    </div>
+                        {kasItems.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveItem(item.id)}
+                            className="text-xs font-semibold text-rose-600 hover:text-rose-800 flex items-center gap-1 cursor-pointer"
+                            title="Hapus baris item ini"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Hapus</span>
+                          </button>
+                        )}
+                      </div>
 
-                    {isAddingNewSumberDana ? (
-                      <div className="flex items-center gap-2">
+                      {/* Baris Kategori & Nominal */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-[11px] font-bold text-slate-700 uppercase">
+                              Kategori {activeTab === 'MASUK' ? 'Pemasukan' : 'Pengeluaran'}
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleUpdateItem(item.id, {
+                                  isCustomKategori: !item.isCustomKategori,
+                                  customKategoriInput: ''
+                                });
+                              }}
+                              className="text-[10px] font-bold text-emerald-700 hover:underline cursor-pointer"
+                            >
+                              {item.isCustomKategori ? 'Pilih Kategori Ada' : '+ Kategori Baru'}
+                            </button>
+                          </div>
+
+                          {item.isCustomKategori ? (
+                            <input
+                              type="text"
+                              required
+                              value={item.customKategoriInput}
+                              onChange={(e) => handleUpdateItem(item.id, { customKategoriInput: e.target.value })}
+                              placeholder="Ketik kategori kas baru..."
+                              className="w-full px-3 py-2 text-xs bg-white border border-emerald-500 ring-1 ring-emerald-500 rounded-lg focus:outline-hidden"
+                            />
+                          ) : (
+                            <select
+                              value={item.kategori}
+                              onChange={(e) => handleUpdateItem(item.id, { kategori: e.target.value })}
+                              className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600"
+                            >
+                              {availableCategories.map(cat => (
+                                <option key={cat} value={cat}>{cat}</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                            Nominal (Rp) <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="number"
+                            required
+                            min="1"
+                            value={item.nominal || ''}
+                            onChange={(e) => handleUpdateItem(item.id, { nominal: Math.max(0, Number(e.target.value) || 0) })}
+                            placeholder="Contoh: 500000"
+                            className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Sumber Dana (HANYA saat Kas Keluar) */}
+                      {activeTab === 'KELUAR' && (
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-[11px] font-bold text-slate-700 uppercase">
+                              Diambil dari Dana <span className="text-rose-500">*</span>
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateItem(item.id, { isAddingNewSumberDana: !item.isAddingNewSumberDana })}
+                              className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer"
+                            >
+                              {item.isAddingNewSumberDana ? 'Pilih dari Dropdown' : '+ Tambah Kategori Baru'}
+                            </button>
+                          </div>
+
+                          {item.isAddingNewSumberDana ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={item.newSumberDanaInput}
+                                onChange={(e) => handleUpdateItem(item.id, { newSumberDanaInput: e.target.value })}
+                                placeholder="Tulis nama kategori sumber dana baru..."
+                                className="flex-1 px-3 py-2 text-xs bg-white border border-emerald-500 ring-1 ring-emerald-500 rounded-lg focus:outline-hidden"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleAddNewSumberDanaForItem(item.id, item.newSumberDanaInput)}
+                                disabled={!item.newSumberDanaInput.trim()}
+                                className="px-3 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 rounded-lg cursor-pointer transition-colors"
+                              >
+                                Tambah
+                              </button>
+                            </div>
+                          ) : (
+                            <select
+                              required
+                              value={item.selectedSumberDana}
+                              onChange={(e) => handleUpdateItem(item.id, { selectedSumberDana: e.target.value })}
+                              className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600"
+                            >
+                              <option value="" disabled>-- Pilih Sumber Dana --</option>
+                              {activeKategoriList.map(kd => (
+                                <option key={kd.id_kategori} value={kd.id_kategori}>
+                                  {kd.nama_kategori}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Uraian / Keterangan Per Item */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                          Uraian / Keterangan Transaksi <span className="text-rose-500">*</span>
+                        </label>
                         <input
                           type="text"
-                          value={newSumberDanaInput}
-                          onChange={(e) => setNewSumberDanaInput(e.target.value)}
-                          placeholder="Tulis nama kategori sumber dana baru..."
-                          className="flex-1 px-3 py-2 text-xs bg-white border border-emerald-500 ring-1 ring-emerald-500 rounded-lg focus:outline-hidden"
+                          required
+                          value={item.keterangan}
+                          onChange={(e) => handleUpdateItem(item.id, { keterangan: e.target.value })}
+                          placeholder="Rincian tujuan transaksi / nama donatur / keperluan..."
+                          className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600"
                         />
-                        <button
-                          type="button"
-                          onClick={handleAddNewSumberDana}
-                          disabled={!newSumberDanaInput.trim()}
-                          className="px-3 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 rounded-lg cursor-pointer transition-colors"
-                        >
-                          Tambah
-                        </button>
                       </div>
-                    ) : (
-                      <select
-                        required
-                        value={selectedSumberDana}
-                        onChange={(e) => setSelectedSumberDana(e.target.value)}
-                        className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
-                      >
-                        <option value="" disabled>-- Pilih Sumber Dana --</option>
-                        {activeKategoriList.map(kd => (
-                          <option key={kd.id_kategori} value={kd.id_kategori}>
-                            {kd.nama_kategori}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      Diambil dari pos dana kategori sheet KATEGORI_DANA (mengisi kolom id_kategori di KEUANGAN).
-                    </p>
-                  </div>
-                )}
+                    </div>
+                  ))}
+                </div>
 
-                {/* Keterangan */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    Uraian / Keterangan Transaksi <span className="text-rose-500">*</span>
-                  </label>
-                  <textarea
-                    rows={2}
-                    required
-                    value={formKeterangan}
-                    onChange={(e) => setFormKeterangan(e.target.value)}
-                    placeholder="Rincian tujuan transaksi / nama donatur / keperluan..."
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
-                  />
+                {/* Total Otomatis saat lebih dari 1 item (atau ringkasan total) */}
+                <div className="p-3.5 bg-slate-100 rounded-xl border border-slate-300 flex items-center justify-between">
+                  <div>
+                    <span className="text-xs text-slate-600 font-bold uppercase tracking-wider block">
+                      Total Nominal ({kasItems.length} Item):
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      Tiap item tersimpan terpisah di KEUANGAN & tergabung dalam 1 kuitansi
+                    </span>
+                  </div>
+                  <div className={`text-base sm:text-lg font-black font-mono ${
+                    activeTab === 'MASUK' ? 'text-emerald-800' : 'text-rose-800'
+                  }`}>
+                    {formatRupiah(totalNominalAll)}
+                  </div>
                 </div>
 
                 {/* Bukti Transaksi */}
