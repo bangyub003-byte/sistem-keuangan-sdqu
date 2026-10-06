@@ -16,6 +16,7 @@ import { Printer, X, FileText, AlertCircle } from 'lucide-react';
 export type PrintMode =
   | 'KUITANSI_TRANSAKSI'
   | 'KUITANSI'
+  | 'BUKTI_KAS'
   | 'REKAP_PEMBAYARAN'
   | 'REKAP_TUNGGAKAN'
   | 'LAPORAN_MASUK'
@@ -72,12 +73,37 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
   const safeStudents = Array.isArray(students) ? students : [];
   const safeKeuangan = Array.isArray(keuangan) ? keuangan : [];
 
-  const isReceipt = mode === 'KUITANSI_TRANSAKSI' || mode === 'KUITANSI';
+  const isKasReceipt = mode === 'BUKTI_KAS' || Boolean(data && typeof data === 'object' && 'id_keuangan' in data && 'jenis' in data);
+  const kasRecord = isKasReceipt ? (data as KeuanganRecord) : null;
+  const isReceipt = (mode === 'KUITANSI_TRANSAKSI' || mode === 'KUITANSI') && !isKasReceipt;
 
   const transaction = propTransaction || (isReceipt ? (data as Transaction) : null);
   const linkedStudent = transaction ? safeStudents.find(s => s.nisn === transaction.nisn) : null;
   const student = propStudent || (mode === 'KARTU_SPP' ? (data as Student) : null) || linkedStudent;
   const effectiveMonth = filterMonth || month || '';
+
+  // Multi-item transaction grouping for id_kuitansi_gabungan
+  const receiptItems = useMemo(() => {
+    if (!transaction) return [];
+    if (transaction.id_kuitansi_gabungan) {
+      const grouped = safeTransactions.filter(
+        t => t.id_kuitansi_gabungan === transaction.id_kuitansi_gabungan && t.status !== 'CANCEL'
+      );
+      if (grouped.length > 0) {
+        if (!grouped.some(g => g.id_transaksi === transaction.id_transaksi)) {
+          return [transaction, ...grouped];
+        }
+        return grouped;
+      }
+    }
+    return [transaction];
+  }, [transaction, safeTransactions]);
+
+  const isMultiItem = receiptItems.length > 1;
+  const totalTagihanReceipt = receiptItems.reduce((acc, t) => acc + (t.nominal_tagihan || 0), 0);
+  const totalBayarReceipt = receiptItems.reduce((acc, t) => acc + (t.nominal_bayar || 0), 0);
+  const totalSisaReceipt = receiptItems.reduce((acc, t) => acc + (t.sisa || 0), 0);
+  const overallReceiptStatus = totalSisaReceipt === 0 ? 'LUNAS' : 'KURANG';
 
   const handlePrint = (e?: React.MouseEvent) => {
     if (e) {
@@ -87,7 +113,12 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
     setErrorMessage(null);
 
     // Validasi data nyata sebelum proses cetak
-    if (isReceipt) {
+    if (isKasReceipt) {
+      if (!kasRecord || !kasRecord.id_keuangan) {
+        setErrorMessage('Data transaksi kas belum siap atau belum dimuat, mohon tunggu sebentar.');
+        return;
+      }
+    } else if (isReceipt) {
       if (!transaction || !transaction.id_transaksi) {
         setErrorMessage('Data transaksi kuitansi belum siap atau belum dimuat, mohon tunggu sebentar.');
         return;
@@ -197,14 +228,16 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
             </div>
           </div>
 
-          {/* 1. KUITANSI PEMBAYARAN SATUAN FORMAL */}
+          {/* 1. KUITANSI PEMBAYARAN SATUAN / MULTI-ITEM FORMAL */}
           {isReceipt && transaction && (
             <div className="print-break-inside-avoid">
               <div className="text-center mb-6">
                 <h2 className="text-lg font-bold text-slate-900 uppercase underline tracking-wide">
-                  BUKTI PEMBAYARAN MURID (KUITANSI)
+                  {isMultiItem ? 'BUKTI PEMBAYARAN MURID (KUITANSI GABUNGAN)' : 'BUKTI PEMBAYARAN MURID (KUITANSI)'}
                 </h2>
-                <p className="text-xs text-slate-500 font-mono mt-1">No. Registrasi: {transaction.id_transaksi}</p>
+                <p className="text-xs text-slate-500 font-mono mt-1">
+                  No. Registrasi: {transaction.id_kuitansi_gabungan || transaction.id_transaksi}
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4 text-xs sm:text-sm mb-6 bg-slate-50 p-4 rounded-lg border border-slate-200">
@@ -237,16 +270,26 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                         <td className="py-1 text-slate-500 w-32">Tanggal Transaksi</td>
                         <td className="py-1 font-bold text-slate-900">: {trxTs.dateDisplay || transaction.tanggal}</td>
                       </tr>
-                      {transaction.bulan ? (
-                        <tr className="bg-emerald-50/70">
-                          <td className="py-1 text-emerald-900 font-bold w-32">Bulan Dibayar</td>
-                          <td className="py-1 font-extrabold text-emerald-900">: {formatBulanDibayar(transaction.bulan)}</td>
+                      {isMultiItem ? (
+                        <tr>
+                          <td className="py-1 text-slate-500 w-32">Item Pembayaran</td>
+                          <td className="py-1 font-semibold text-slate-800">: {receiptItems.length} Rincian Pembayaran</td>
                         </tr>
                       ) : (
-                        <tr>
-                          <td className="py-1 text-slate-500 w-32">Periode / Bulan</td>
-                          <td className="py-1 text-slate-600">: Sesuai Jenis Tagihan</td>
-                        </tr>
+                        (() => {
+                          const isSingleSpp = (transaction.jenis || '').toLowerCase().includes('spp') || Boolean(transaction.bulan);
+                          return isSingleSpp && transaction.bulan ? (
+                            <tr className="bg-emerald-50/70">
+                              <td className="py-1 text-emerald-900 font-bold w-32">Bulan Dibayar</td>
+                              <td className="py-1 font-extrabold text-emerald-900">: {formatBulanDibayar(transaction.bulan)}</td>
+                            </tr>
+                          ) : (
+                            <tr>
+                              <td className="py-1 text-slate-500 w-32">Keterangan / Periode</td>
+                              <td className="py-1 text-slate-600">: Sesuai Jenis Tagihan</td>
+                            </tr>
+                          );
+                        })()
                       )}
                       <tr>
                         <td className="py-1 text-slate-500">Tahun Ajaran</td>
@@ -278,7 +321,7 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                 </div>
               </div>
 
-              {/* Rincian Finansial */}
+              {/* Rincian Finansial (Satu atau Multi-Item) */}
               <table className="w-full border-collapse border border-slate-300 text-xs sm:text-sm mb-6">
                 <thead>
                   <tr className="bg-emerald-800 text-white">
@@ -290,33 +333,125 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                   </tr>
                 </thead>
                 <tbody>
+                  {receiptItems.map((item, idx) => (
+                    <tr key={item.id_transaksi || idx}>
+                      <td className="border border-slate-300 p-2 text-center">{idx + 1}</td>
+                      <td className="border border-slate-300 p-2 font-medium">
+                        {getStandardTransactionTitle(item)}
+                        {item.keterangan && (
+                          <div className="text-xs text-slate-500 italic mt-0.5">{item.keterangan}</div>
+                        )}
+                      </td>
+                      <td className="border border-slate-300 p-2 text-right font-medium">
+                        {formatRupiah(item.nominal_tagihan)}
+                      </td>
+                      <td className="border border-slate-300 p-2 text-right font-bold text-emerald-800">
+                        {formatRupiah(item.nominal_bayar)}
+                      </td>
+                      <td className="border border-slate-300 p-2 text-right font-medium text-rose-700">
+                        {formatRupiah(item.sisa)}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="bg-slate-100 font-bold">
+                    <td colSpan={2} className="border border-slate-300 p-2 text-right">
+                      {isMultiItem ? 'TOTAL KESELURUHAN:' : 'TOTAL DITERIMA:'}
+                    </td>
+                    <td className="border border-slate-300 p-2 text-right font-medium">
+                      {formatRupiah(totalTagihanReceipt)}
+                    </td>
+                    <td className="border border-slate-300 p-2 text-right font-mono text-base text-emerald-900">
+                      {formatRupiah(totalBayarReceipt)}
+                    </td>
+                    <td className="border border-slate-300 p-2 text-right font-mono text-rose-800">
+                      {formatRupiah(totalSisaReceipt)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* 1.B BUKTI TRANSAKSI KAS MASUK / KELUAR */}
+          {isKasReceipt && kasRecord && (
+            <div className="print-break-inside-avoid">
+              <div className="text-center mb-6">
+                <h2 className="text-lg font-bold text-slate-900 uppercase underline tracking-wide">
+                  BUKTI TRANSAKSI KAS {kasRecord.jenis === 'MASUK' ? 'MASUK' : 'KELUAR'}
+                </h2>
+                <p className="text-xs text-slate-500 font-mono mt-1">No. Registrasi: {kasRecord.id_keuangan}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 text-xs sm:text-sm mb-6 bg-slate-50 p-4 rounded-lg border border-slate-200">
+                <div>
+                  <table className="w-full">
+                    <tbody>
+                      <tr>
+                        <td className="py-1 text-slate-500 w-36">Jenis Transaksi</td>
+                        <td className="py-1 font-bold text-slate-900">: Kas {kasRecord.jenis === 'MASUK' ? 'Masuk (Penerimaan)' : 'Keluar (Pengeluaran)'}</td>
+                      </tr>
+                      <tr>
+                        <td className="py-1 text-slate-500">Kategori Kas</td>
+                        <td className="py-1 font-medium text-slate-800">: {kasRecord.kategori}</td>
+                      </tr>
+                      <tr>
+                        <td className="py-1 text-slate-500">Asal Lembaga</td>
+                        <td className="py-1">: {setting.nama_sekolah}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div>
+                  <table className="w-full">
+                    <tbody>
+                      <tr>
+                        <td className="py-1 text-slate-500 w-36">Tanggal & Waktu</td>
+                        <td className="py-1 font-bold text-slate-900">: {kasRecord.tanggal} {kasRecord.waktu ? `(${kasRecord.waktu})` : ''}</td>
+                      </tr>
+                      <tr>
+                        <td className="py-1 text-slate-500">Petugas Pencatat</td>
+                        <td className="py-1 font-medium">: {kasRecord.petugas || setting.nama_bendahara}</td>
+                      </tr>
+                      <tr>
+                        <td className="py-1 text-slate-500">Status Catatan</td>
+                        <td className="py-1">
+                          : <span className="font-bold px-2 py-0.5 rounded text-xs bg-emerald-100 text-emerald-800">TERCATAT AKTIF</span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Rincian Finansial Kas */}
+              <table className="w-full border-collapse border border-slate-300 text-xs sm:text-sm mb-6">
+                <thead>
+                  <tr className="bg-emerald-800 text-white">
+                    <th className="border border-slate-300 p-2 text-center w-12">No</th>
+                    <th className="border border-slate-300 p-2 text-left">Uraian / Keterangan Transaksi Kas</th>
+                    <th className="border border-slate-300 p-2 text-center w-36">Kategori</th>
+                    <th className="border border-slate-300 p-2 text-right w-44">Jumlah Nominal</th>
+                  </tr>
+                </thead>
+                <tbody>
                   <tr>
                     <td className="border border-slate-300 p-2 text-center">1</td>
                     <td className="border border-slate-300 p-2 font-medium">
-                      {getStandardTransactionTitle(transaction)}
-                      {transaction.keterangan && (
-                        <div className="text-xs text-slate-500 italic mt-0.5">{transaction.keterangan}</div>
-                      )}
+                      {kasRecord.keterangan || `Transaksi Kas ${kasRecord.jenis === 'MASUK' ? 'Masuk' : 'Keluar'} - ${kasRecord.kategori}`}
                     </td>
-                    <td className="border border-slate-300 p-2 text-right font-medium">
-                      {formatRupiah(transaction.nominal_tagihan)}
+                    <td className="border border-slate-300 p-2 text-center font-medium">
+                      {kasRecord.kategori}
                     </td>
-                    <td className="border border-slate-300 p-2 text-right font-bold text-emerald-800">
-                      {formatRupiah(transaction.nominal_bayar)}
-                    </td>
-                    <td className="border border-slate-300 p-2 text-right font-medium text-rose-700">
-                      {formatRupiah(transaction.sisa)}
+                    <td className="border border-slate-300 p-2 text-right font-bold text-emerald-800 font-mono text-sm">
+                      {formatRupiah(kasRecord.nominal)}
                     </td>
                   </tr>
                   <tr className="bg-slate-100 font-bold">
                     <td colSpan={3} className="border border-slate-300 p-2 text-right">
-                      TOTAL DITERIMA:
+                      TOTAL NOMINAL:
                     </td>
                     <td className="border border-slate-300 p-2 text-right font-mono text-base text-emerald-900">
-                      {formatRupiah(transaction.nominal_bayar)}
-                    </td>
-                    <td className="border border-slate-300 p-2 text-right font-mono text-rose-800">
-                      {formatRupiah(transaction.sisa)}
+                      {formatRupiah(kasRecord.nominal)}
                     </td>
                   </tr>
                 </tbody>
@@ -343,7 +478,7 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                     <th className="border border-slate-300 p-2 text-left">Tanggal</th>
                     <th className="border border-slate-300 p-2 text-left">Nama Murid</th>
                     <th className="border border-slate-300 p-2 text-center">Kelas</th>
-                    <th className="border border-slate-300 p-2 text-center">Bulan</th>
+                    <th className="border border-slate-300 p-2 text-center">Jenis / Bulan</th>
                     <th className="border border-slate-300 p-2 text-right">Nominal</th>
                     <th className="border border-slate-300 p-2 text-center">Status</th>
                   </tr>
@@ -357,7 +492,9 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                         <td className="border border-slate-300 p-2 font-mono">{t.tanggal}</td>
                         <td className="border border-slate-300 p-2 font-bold text-slate-800">{t.nama_siswa}</td>
                         <td className="border border-slate-300 p-2 text-center">{t.kelas}</td>
-                        <td className="border border-slate-300 p-2 text-center font-medium">{formatBulanDibayar(t.bulan) || '-'}</td>
+                        <td className="border border-slate-300 p-2 text-center font-medium">
+                          {t.bulan ? formatBulanDibayar(t.bulan) : getStandardTransactionTitle(t)}
+                        </td>
                         <td className="border border-slate-300 p-2 text-right font-medium text-emerald-800">
                           {formatRupiah(t.nominal_bayar)}
                         </td>
@@ -612,6 +749,31 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                   <span className="text-[10px] text-slate-300 italic">[Tanda Tangan Petugas Keuangan]</span>
                 </div>
                 <p className="font-bold text-slate-900 underline">{setting.nama_bendahara}</p>
+                {setting.nipy_bendahara && setting.nipy_bendahara.trim() ? (
+                  <p className="text-[11px] text-slate-500">NIPY. {setting.nipy_bendahara.trim()}</p>
+                ) : null}
+              </div>
+            </div>
+          ) : isKasReceipt && kasRecord ? (
+            <div className="print-break-inside-avoid mt-8 pt-4 border-t border-slate-200 grid grid-cols-2 text-xs sm:text-sm text-center">
+              <div>
+                <p className="text-slate-600 mb-1">Mengetahui,</p>
+                <p className="font-bold text-slate-800">Kepala Sekolah</p>
+                <div className="h-16 flex items-center justify-center">
+                  <span className="text-[10px] text-slate-300 italic">[Tanda Tangan & Cap Lembaga]</span>
+                </div>
+                <p className="font-bold text-slate-900 underline">{setting.nama_kepsek}</p>
+                {setting.nipy_kepala_sekolah && setting.nipy_kepala_sekolah.trim() ? (
+                  <p className="text-[11px] text-slate-500">NIPY. {setting.nipy_kepala_sekolah.trim()}</p>
+                ) : null}
+              </div>
+              <div>
+                <p className="text-slate-600 mb-1">Playen, {currentDate}</p>
+                <p className="font-bold text-slate-800">Bendahara / Petugas Pencatat</p>
+                <div className="h-16 flex items-center justify-center">
+                  <span className="text-[10px] text-slate-300 italic">[Tanda Tangan Petugas Keuangan]</span>
+                </div>
+                <p className="font-bold text-slate-900 underline">{kasRecord.petugas || setting.nama_bendahara}</p>
                 {setting.nipy_bendahara && setting.nipy_bendahara.trim() ? (
                   <p className="text-[11px] text-slate-500">NIPY. {setting.nipy_bendahara.trim()}</p>
                 ) : null}

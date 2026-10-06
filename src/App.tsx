@@ -383,6 +383,37 @@ export default function App() {
   };
 
   // Payment Operations
+  const handleProcessPaymentBatch = async (
+    items: Array<{
+      nisn: string;
+      nama_siswa: string;
+      kelas: string;
+      jenis: string;
+      kategori: string;
+      bulan?: string;
+      nominal_tagihan: number;
+      nominal_bayar: number;
+      status: 'LUNAS' | 'KURANG';
+      petugas: string;
+      keterangan?: string;
+    }>,
+    customKuitansiId?: string
+  ): Promise<{ transactions: Transaction[]; kuitansiId: string }> => {
+    setSyncStatus('syncing');
+    setSyncError(null);
+    const res = await StorageService.processPaymentBatch(items, customKuitansiId);
+    setTransactions(StorageService.getTransactions());
+    setKeuangan(StorageService.getKeuangan());
+    if (res.gasResult && res.gasResult.status === 'error') {
+      setSyncStatus('error');
+      setSyncError(res.gasResult.message);
+    } else {
+      setSyncStatus('synced');
+      if (res.gasResult?.version) setDataVersion(res.gasResult.version);
+    }
+    return { transactions: res.transactions, kuitansiId: res.kuitansiId };
+  };
+
   const handleProcessPayment = (data: {
     nisn: string;
     nama_siswa: string;
@@ -587,6 +618,14 @@ export default function App() {
     });
   };
 
+  const handleOpenKasReceipt = (rec: KeuanganRecord) => {
+    setPrintConfig({
+      isOpen: true,
+      mode: 'BUKTI_KAS',
+      data: rec
+    });
+  };
+
   const handleOpenPrintReport = (mode: PrintMode, month?: string) => {
     setPrintConfig({
       isOpen: true,
@@ -692,6 +731,7 @@ export default function App() {
                     setting={setting}
                     operatorName={currentUser.nama}
                     onProcessPayment={handleProcessPayment}
+                    onProcessPaymentBatch={handleProcessPaymentBatch}
                     onCancelPayment={handleCancelPayment}
                     onOpenReceipt={handleOpenReceipt}
                     onVerifyPaymentStatus={handleVerifyPaymentStatus}
@@ -707,6 +747,7 @@ export default function App() {
                     onCancelKeuangan={handleCancelKeuangan}
                     kategoriDana={kategoriDana}
                     onAddKategoriDana={handleAddKategoriDana}
+                    onOpenKasReceipt={handleOpenKasReceipt}
                   />
                 )}
 

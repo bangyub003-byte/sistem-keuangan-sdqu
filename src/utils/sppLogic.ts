@@ -161,12 +161,14 @@ export function getAcademicYearMonths(
  * Always produces "SPP Bulan [Nama Bulan]" for SPP transactions.
  * Example: "SPP Bulan Oktober 2026" instead of generic "SPP Bulanan".
  */
-export function getStandardTransactionTitle(trx: {
+export function getStandardTransactionTitle(trx?: {
   jenis?: string;
   kategori?: string;
   bulan?: string;
   keterangan?: string;
-}): string {
+} | null): string {
+  if (!trx) return 'Transaksi';
+
   // If this is a historical / manual arrears transaction, return its specific custom jenis or title
   if (isHistoricalArrearsTrx(trx)) {
     const rawJenis = (trx.jenis || '').trim();
@@ -179,16 +181,16 @@ export function getStandardTransactionTitle(trx: {
     return rawJenis || 'Tunggakan Manual';
   }
 
-  // If specific non-SPP jenis is set (e.g. "Buku Paket", "Iuran Wisuda", "Seragam"), use it directly
-  if (trx.jenis && trx.jenis !== 'SPP' && trx.jenis !== 'SPP Bulanan' && !trx.jenis.toLowerCase().includes('spp')) {
-    return trx.jenis;
+  const rawJenis = (trx.jenis || '').trim();
+
+  // If rawJenis is already formatted as "SPP Bulan [nama bulan]", return as-is
+  if (rawJenis.toLowerCase().startsWith('spp bulan')) {
+    return rawJenis;
   }
 
-  const isSpp = trx.kategori === 'SPP' ||
-                (trx.jenis || '').toLowerCase().includes('spp') ||
-                Boolean(trx.bulan);
-
-  if (isSpp && trx.bulan) {
+  // HANYA format "SPP Bulan [nama bulan]" KHUSUS jika jenis MEMANG "SPP Bulanan" (atau "SPP") DAN field bulan terisi
+  const isExactSpp = rawJenis === 'SPP Bulanan' || rawJenis.toLowerCase() === 'spp' || rawJenis.toLowerCase().startsWith('spp bulanan');
+  if (isExactSpp && trx.bulan && trx.bulan.trim()) {
     const cleanBulan = formatBulanDibayar(trx.bulan) || trx.bulan.trim();
     if (cleanBulan.toLowerCase().startsWith('spp bulan')) {
       return cleanBulan;
@@ -199,14 +201,12 @@ export function getStandardTransactionTitle(trx: {
     return `SPP Bulan ${cleanBulan}`;
   }
 
-  if (isSpp && trx.keterangan && trx.keterangan.toLowerCase().includes('spp bulan')) {
-    const match = trx.keterangan.match(/spp\s+bulan\s+([a-zA-Z]+\s*\d{4}|[a-zA-Z]+)/i);
-    if (match) {
-      return `SPP Bulan ${match[1]}`;
-    }
+  // Tampilkan field "jenis" sebenarnya APA ADANYA (jenis = "Seragam" -> "Seragam", dsb)
+  if (rawJenis) {
+    return rawJenis;
   }
 
-  return trx.jenis || 'Transaksi';
+  return 'Transaksi';
 }
 
 /**
@@ -741,4 +741,29 @@ export function formatTransactionTimestamp(
     fullDisplay,
     cleanTime
   };
+}
+
+/**
+ * Konversi angka rupiah ke teks terbilang bahasa Indonesia
+ * Contoh: 500000 -> "Lima Ratus Ribu Rupiah"
+ */
+export function terbilang(n: number): string {
+  const angka = ['', 'Satu', 'Dua', 'Tiga', 'Empat', 'Lima', 'Enam', 'Tujuh', 'Delapan', 'Sembilan', 'Sepuluh', 'Sebelas'];
+  n = Math.floor(Math.abs(n));
+  if (n < 12) return angka[n];
+  if (n < 20) return terbilang(n - 10) + ' Belas';
+  if (n < 100) return terbilang(Math.floor(n / 10)) + ' Puluh ' + (angka[n % 10] ? ' ' + angka[n % 10] : '');
+  if (n < 200) return 'Seratus ' + terbilang(n - 100);
+  if (n < 1000) return terbilang(Math.floor(n / 100)) + ' Ratus ' + (n % 100 !== 0 ? ' ' + terbilang(n % 100) : '');
+  if (n < 2000) return 'Seribu ' + terbilang(n - 1000);
+  if (n < 1000000) return terbilang(Math.floor(n / 1000)) + ' Ribu ' + (n % 1000 !== 0 ? ' ' + terbilang(n % 1000) : '');
+  if (n < 1000000000) return terbilang(Math.floor(n / 1000000)) + ' Juta ' + (n % 1000000 !== 0 ? ' ' + terbilang(n % 1000000) : '');
+  if (n < 1000000000000) return terbilang(Math.floor(n / 1000000000)) + ' Miliar ' + (n % 1000000000 !== 0 ? ' ' + terbilang(n % 1000000000) : '');
+  return n.toString();
+}
+
+export function terbilangRupiah(n: number): string {
+  if (!n || n <= 0) return 'Nol Rupiah';
+  const hasil = terbilang(n).trim().replace(/\s+/g, ' ');
+  return `${hasil} Rupiah`;
 }

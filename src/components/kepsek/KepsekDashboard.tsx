@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Student, Transaction, KeuanganRecord, SchoolSetting } from '../../types';
 import { PrintMode } from '../PrintReportView';
-import { calculateAllStudentsSppSummary, calculateStudentSppStatus } from '../../utils/sppLogic';
+import { calculateAllStudentsSppSummary, calculateStudentSppStatus, getStandardTransactionTitle } from '../../utils/sppLogic';
 import { SantriDetailModal } from '../bendahara/SantriDetailModal';
 import { School, TrendingUp, AlertTriangle, Printer, Calendar, Wallet, Users, CreditCard, ArrowDownLeft, ArrowUpRight, Eye, Search, FileText, History } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend, PieChart, Pie, Cell } from 'recharts';
@@ -551,7 +551,7 @@ export const KepsekDashboard: React.FC<KepsekDashboardProps> = ({
                         </button>
                       </td>
                       <td className="p-3 text-slate-600">{trx.kelas}</td>
-                      <td className="p-3">{trx.jenis}</td>
+                      <td className="p-3 font-medium text-slate-800">{getStandardTransactionTitle(trx)}</td>
                       <td className="p-3 text-right font-extrabold text-emerald-800">{formatRupiah(trx.nominal_bayar)}</td>
                       <td className="p-3 text-right font-bold text-rose-700">{trx.sisa > 0 ? formatRupiah(trx.sisa) : '-'}</td>
                       <td className="p-3 text-center">

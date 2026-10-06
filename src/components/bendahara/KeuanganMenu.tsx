@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { KeuanganRecord, KeuanganType, KategoriDana } from '../../types';
-import { Plus, ArrowDownLeft, ArrowUpRight, Filter, Search, FileText, Image, Calendar, Tag, Wallet, Check, AlertTriangle, X } from 'lucide-react';
+import { Plus, ArrowDownLeft, ArrowUpRight, Filter, Search, FileText, Image, Calendar, Tag, Wallet, Check, AlertTriangle, X, Printer, CheckCircle } from 'lucide-react';
 
 interface KeuanganMenuProps {
   keuangan: KeuanganRecord[];
@@ -9,6 +9,7 @@ interface KeuanganMenuProps {
   onCancelKeuangan?: (id: string, reason: string) => void;
   kategoriDana?: KategoriDana[];
   onAddKategoriDana?: (cat: { nama_kategori: string; keterangan?: string }) => void;
+  onOpenKasReceipt?: (record: KeuanganRecord) => void;
 }
 
 export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
@@ -17,12 +18,14 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
   onAddKeuangan,
   onCancelKeuangan,
   kategoriDana = [],
-  onAddKategoriDana
+  onAddKategoriDana,
+  onOpenKasReceipt
 }) => {
   const [activeTab, setActiveTab] = useState<KeuanganType>('MASUK');
   const [filterKategori, setFilterKategori] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [justSavedKasRecord, setJustSavedKasRecord] = useState<KeuanganRecord | null>(null);
 
   // Cancellation modal state
   const [cancelModal, setCancelModal] = useState<{
@@ -148,8 +151,27 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
       ? selectedSumberDana
       : (activeKategoriList.find(kd => kd.nama_kategori.toLowerCase() === finalKategori.toLowerCase())?.id_kategori || 'KAT-DONASI');
 
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+
+    const newRecord: KeuanganRecord = {
+      id_keuangan: `KUG-${Date.now()}`,
+      tanggal: formTanggal,
+      waktu: timeStr,
+      jenis: activeTab,
+      kategori: finalKategori,
+      id_kategori: chosenIdKategori,
+      nominal: formNominal,
+      keterangan: formKeterangan,
+      bukti: formBukti,
+      petugas: operatorName,
+      status: 'ACTIVE'
+    };
+
     onAddKeuangan({
       tanggal: formTanggal,
+      waktu: timeStr,
       jenis: activeTab,
       kategori: finalKategori,
       id_kategori: chosenIdKategori,
@@ -161,6 +183,8 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
     });
 
     setIsModalOpen(false);
+    // Tampilkan opsi cetak kuitansi kas secara opsional (Prioritas 3)
+    setJustSavedKasRecord(newRecord);
   };
 
   const handleConfirmCancel = (e: React.FormEvent) => {
@@ -473,23 +497,35 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
                     </td>
                     <td className="p-3 text-slate-500">{rec.petugas || operatorName}</td>
                     <td className="p-3 text-center">
-                      {rec.status === 'CANCEL' ? (
-                        <span className="text-[10px] text-slate-400 italic">Batal</span>
-                      ) : onCancelKeuangan ? (
-                        <button
-                          type="button"
-                          onClick={() => setCancelModal({
-                            isOpen: true,
-                            id: rec.id_keuangan,
-                            keterangan: rec.keterangan,
-                            reason: ''
-                          })}
-                          className="px-2 py-1 text-[10px] font-bold text-rose-600 hover:text-white hover:bg-rose-600 border border-rose-200 hover:border-rose-600 rounded-lg transition-colors cursor-pointer"
-                          title="Batalkan transaksi kas ini dengan mencantumkan alasan"
-                        >
-                          Batalkan
-                        </button>
-                      ) : null}
+                      <div className="flex items-center justify-center gap-1.5">
+                        {onOpenKasReceipt && rec.status !== 'CANCEL' && (
+                          <button
+                            type="button"
+                            onClick={() => onOpenKasReceipt(rec)}
+                            className="p-1.5 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                            title="Cetak Bukti Transaksi Kas"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {rec.status === 'CANCEL' ? (
+                          <span className="text-[10px] text-slate-400 italic">Batal</span>
+                        ) : onCancelKeuangan ? (
+                          <button
+                            type="button"
+                            onClick={() => setCancelModal({
+                              isOpen: true,
+                              id: rec.id_keuangan,
+                              keterangan: rec.keterangan,
+                              reason: ''
+                            })}
+                            className="px-2 py-1 text-[10px] font-bold text-rose-600 hover:text-white hover:bg-rose-600 border border-rose-200 hover:border-rose-600 rounded-lg transition-colors cursor-pointer"
+                            title="Batalkan transaksi kas ini dengan mencantumkan alasan"
+                          >
+                            Batalkan
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -774,6 +810,53 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Konfirmasi Opsional Cetak Kuitansi Kas (Prioritas 3) */}
+      {justSavedKasRecord && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6 text-center space-y-4 animate-in fade-in zoom-in-95">
+            <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center mx-auto">
+              <CheckCircle className="w-6 h-6 text-emerald-600" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-slate-900 text-base sm:text-lg">
+                Transaksi Kas Berhasil Disimpan
+              </h3>
+              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                Kas {justSavedKasRecord.jenis === 'MASUK' ? 'Masuk (Penerimaan)' : 'Keluar (Pengeluaran)'} kategori{' '}
+                <strong>{justSavedKasRecord.kategori}</strong> sebesar{' '}
+                <strong className="text-emerald-800">{formatRupiah(justSavedKasRecord.nominal)}</strong> telah tercatat di sistem pembukuan.
+              </p>
+              <p className="text-xs text-slate-500 mt-2">
+                Cetak kuitansi untuk transaksi ini?
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setJustSavedKasRecord(null)}
+                className="px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer transition-colors"
+              >
+                Tutup
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const rec = justSavedKasRecord;
+                  setJustSavedKasRecord(null);
+                  if (onOpenKasReceipt) {
+                    onOpenKasReceipt(rec);
+                  }
+                }}
+                className="flex items-center gap-2 bg-emerald-800 hover:bg-emerald-900 text-white font-extrabold px-5 py-2.5 rounded-xl text-xs shadow-md transition-all cursor-pointer active:scale-95"
+              >
+                <Printer className="w-4 h-4 text-emerald-300" />
+                <span>Cetak Kuitansi</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

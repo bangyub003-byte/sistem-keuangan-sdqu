@@ -525,6 +525,7 @@ export class StorageService {
     status: 'LUNAS' | 'KURANG';
     petugas: string;
     keterangan?: string;
+    id_kuitansi_gabungan?: string;
   }): Promise<{
     transaction: Transaction;
     keuangan: KeuanganRecord;
@@ -553,7 +554,8 @@ export class StorageService {
       sisa,
       status: data.status,
       petugas: data.petugas,
-      keterangan: data.keterangan
+      keterangan: data.keterangan,
+      id_kuitansi_gabungan: data.id_kuitansi_gabungan
     };
 
     const updatedTrx = [newTrx, ...transactions];
@@ -584,6 +586,112 @@ export class StorageService {
     }
 
     return { transaction: newTrx, keuangan: newKeuangan, gasResult };
+  }
+
+  static async processPaymentBatch(
+    items: Array<{
+      nisn: string;
+      nama_siswa: string;
+      kelas: string;
+      jenis: string;
+      kategori: string;
+      bulan?: string;
+      nominal_tagihan: number;
+      nominal_bayar: number;
+      status: 'LUNAS' | 'KURANG';
+      petugas: string;
+      keterangan?: string;
+    }>,
+    customKuitansiId?: string
+  ): Promise<{
+    transactions: Transaction[];
+    keuanganList: KeuanganRecord[];
+    kuitansiId: string;
+    gasResult?: any;
+  }> {
+    const transactions = this.getTransactions();
+    const keuangan = this.getKeuangan();
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    const fullTimestamp = `${dateStr} ${timeStr}`;
+
+    const sharedKuitansiId = customKuitansiId || `KWT-${now.getFullYear()}-${Date.now().toString().slice(-6)}`;
+    const newTransactions: Transaction[] = [];
+    const newKeuanganList: KeuanganRecord[] = [];
+
+    items.forEach((item, idx) => {
+      const sisa = Math.max(0, item.nominal_tagihan - item.nominal_bayar);
+      const trxId = `TRX-${now.getFullYear()}-${(Date.now() + idx).toString().slice(-6)}`;
+      const newTrx: Transaction = {
+        id_transaksi: trxId,
+        tanggal: fullTimestamp,
+        waktu: timeStr,
+        nisn: item.nisn,
+        nama_siswa: item.nama_siswa,
+        kelas: item.kelas,
+        jenis: item.jenis,
+        kategori: item.kategori,
+        bulan: item.bulan,
+        nominal_tagihan: item.nominal_tagihan,
+        nominal_bayar: item.nominal_bayar,
+        sisa,
+        status: item.status,
+        petugas: item.petugas,
+        keterangan: item.keterangan,
+        id_kuitansi_gabungan: sharedKuitansiId
+      };
+      newTransactions.push(newTrx);
+
+      if (item.nominal_bayar > 0) {
+        const newKeuangan: KeuanganRecord = {
+          id_keuangan: `KUG-${Date.now() + idx}`,
+          tanggal: fullTimestamp,
+          waktu: timeStr,
+          jenis: 'MASUK',
+          kategori: item.kategori || 'SPP',
+          nominal: item.nominal_bayar,
+          keterangan: `Pembayaran ${item.jenis} ${item.bulan || ''} a.n ${item.nama_siswa} (${item.kelas})`,
+          petugas: item.petugas,
+          status: 'ACTIVE',
+          id_kategori: item.kategori === 'SPP' ? 'KAT-SPP' : 'KAT-LAIN'
+        };
+        newKeuanganList.push(newKeuangan);
+      }
+    });
+
+    this.saveTransactions([...newTransactions, ...transactions]);
+    if (newKeuanganList.length > 0) {
+      this.saveKeuangan([...newKeuanganList, ...keuangan]);
+    }
+
+    const firstItem = items[0];
+    const totalBayar = items.reduce((acc, it) => acc + it.nominal_bayar, 0);
+    this.addLog(
+      firstItem?.petugas || 'Bendahara',
+      `Input ${items.length} transaksi pembayaran murid a.n ${firstItem?.nama_siswa} total Rp${totalBayar.toLocaleString('id-ID')} (No. Kuitansi: ${sharedKuitansiId})`
+    );
+
+    const setting = this.getSetting();
+    let gasResult: any = null;
+    if (setting.gas_url) {
+      // Send each transaction to GAS
+      for (const trx of newTransactions) {
+        try {
+          await this.callGasApi(setting.gas_url, 'PROCESS_PAYMENT', trx);
+        } catch (e) {
+          console.error('[GAS Bulk Save Error]', e);
+        }
+      }
+    }
+
+    return {
+      transactions: newTransactions,
+      keuanganList: newKeuanganList,
+      kuitansiId: sharedKuitansiId,
+      gasResult
+    };
   }
 
   static async recordManualArrearsBatch(
@@ -1189,7 +1297,8 @@ export class StorageService {
           status: (t.status === 'LUNAS' || t.status === 'KURANG' || t.status === 'CANCEL') ? t.status : 'LUNAS',
           petugas: String(t.petugas || 'Bendahara'),
           keterangan: t.keterangan ? String(t.keterangan) : undefined,
-          alasan_batal: t.alasan_batal ? String(t.alasan_batal) : undefined
+          alasan_batal: t.alasan_batal ? String(t.alasan_batal) : undefined,
+          id_kuitansi_gabungan: t.id_kuitansi_gabungan ? String(t.id_kuitansi_gabungan) : undefined
         };
       }) : [];
 

@@ -1,8 +1,19 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Student, Transaction, SchoolSetting } from '../../types';
-import { Search, CreditCard, Printer, CheckCircle, AlertCircle, XCircle, User, Calendar, Award, RotateCcw, FileText, Check, ShieldAlert, Plus, PenTool, MessageCircle, Phone } from 'lucide-react';
+import { StorageService } from '../../services/storageService';
+import { Search, CreditCard, Printer, CheckCircle, AlertCircle, XCircle, User, Calendar, Award, RotateCcw, FileText, Check, ShieldAlert, Plus, PenTool, MessageCircle, Phone, Trash2 } from 'lucide-react';
 import { createPaymentConfirmationWaUrl, createTunggakanReminderWaUrl } from '../../utils/whatsappHelper';
 import { calculateStudentSppStatus, getStandardTransactionTitle, getAcademicYearMonths, formatTransactionTimestamp } from '../../utils/sppLogic';
+
+export interface PaymentItemRow {
+  id: string;
+  paymentType: string;
+  isManualPayment: boolean;
+  manualPaymentInput: string;
+  selectedMonth: string;
+  customTagihan: number;
+  nominalBayar: number;
+}
 
 interface PembayaranMenuProps {
   students: Student[];
@@ -22,6 +33,19 @@ interface PembayaranMenuProps {
     petugas: string;
     keterangan?: string;
   }) => Transaction;
+  onProcessPaymentBatch?: (items: Array<{
+    nisn: string;
+    nama_siswa: string;
+    kelas: string;
+    jenis: string;
+    kategori: string;
+    bulan?: string;
+    nominal_tagihan: number;
+    nominal_bayar: number;
+    status: 'LUNAS' | 'KURANG';
+    petugas: string;
+    keterangan?: string;
+  }>, customKuitansiId?: string) => Promise<{ transactions: Transaction[]; kuitansiId: string }>;
   onCancelPayment: (trxId: string, reason: string) => void;
   onOpenReceipt: (trx: Transaction) => void;
   onVerifyPaymentStatus?: (trxId: string, newStatus: 'LUNAS' | 'KURANG' | 'CANCEL', paidAmount?: number, reason?: string) => void;
@@ -34,6 +58,7 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
   setting,
   operatorName,
   onProcessPayment,
+  onProcessPaymentBatch,
   onCancelPayment,
   onOpenReceipt,
   onVerifyPaymentStatus,
@@ -42,29 +67,31 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(selectedStudentFromParent || students[0] || null);
 
-  useEffect(() => {
-    if (selectedStudentFromParent) {
-      setSelectedStudent(selectedStudentFromParent);
-      const defaultSpp = selectedStudentFromParent.spp_nominal || setting?.spp_default_nominal || 85000;
-      setCustomTagihan(defaultSpp);
-      setNominalBayar(defaultSpp);
-    }
-  }, [selectedStudentFromParent, setting?.spp_default_nominal]);
-
-  // Form Payment inputs
-  const [paymentType, setPaymentType] = useState('SPP Bulanan');
-  const [isManualPayment, setIsManualPayment] = useState(false);
-  const [manualPaymentInput, setManualPaymentInput] = useState('');
-  const [customPaymentTypes, setCustomPaymentTypes] = useState<string[]>([]);
-  const [selectedMonth, setSelectedMonth] = useState(() => {
+  const defaultMonthStr = () => {
     const startM = setting?.spp_mulai_bulan || 'Oktober';
     const startY = setting?.spp_mulai_tahun || 2026;
     return `${startM} ${startY}`;
+  };
+
+  const getStudentDefaultSpp = (st?: Student | null) => {
+    return st?.spp_nominal || setting?.spp_default_nominal || 85000;
+  };
+
+  const createDefaultItem = (st?: Student | null): PaymentItemRow => ({
+    id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    paymentType: 'SPP Bulanan',
+    isManualPayment: false,
+    manualPaymentInput: '',
+    selectedMonth: defaultMonthStr(),
+    customTagihan: getStudentDefaultSpp(st),
+    nominalBayar: getStudentDefaultSpp(st)
   });
-  const [customTagihan, setCustomTagihan] = useState<number>(selectedStudent?.spp_nominal || setting?.spp_default_nominal || 85000);
-  const [nominalBayar, setNominalBayar] = useState<number>(selectedStudent?.spp_nominal || setting?.spp_default_nominal || 85000);
+
+  const [paymentItems, setPaymentItems] = useState<PaymentItemRow[]>([
+    createDefaultItem(selectedStudentFromParent || students[0])
+  ]);
+  const [customPaymentTypes, setCustomPaymentTypes] = useState<string[]>([]);
   const [keterangan, setKeterangan] = useState('');
-  const [statusMode, setStatusMode] = useState<'LUNAS' | 'KURANG'>('LUNAS');
 
   // Cancel Transaction Modal
   const [cancelModalTrx, setCancelModalTrx] = useState<Transaction | null>(null);
@@ -74,14 +101,72 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
   const [kurangModalTrx, setKurangModalTrx] = useState<Transaction | null>(null);
   const [kurangBayarInput, setKurangBayarInput] = useState<number>(0);
 
+  useEffect(() => {
+    if (selectedStudentFromParent) {
+      setSelectedStudent(selectedStudentFromParent);
+      const sppFee = getStudentDefaultSpp(selectedStudentFromParent);
+      setPaymentItems(prev => {
+        if (prev.length === 1 && (prev[0].paymentType.startsWith('SPP') || prev[0].paymentType === 'SPP Bulanan')) {
+          return [{
+            ...prev[0],
+            customTagihan: sppFee,
+            nominalBayar: sppFee
+          }];
+        }
+        return prev;
+      });
+    }
+  }, [selectedStudentFromParent, setting?.spp_default_nominal]);
+
   // When selected student changes, update defaults
   const handleSelectStudent = (st: Student) => {
     setSelectedStudent(st);
-    const nominal = st.spp_nominal || setting?.spp_default_nominal || 85000;
-    setCustomTagihan(nominal);
-    setNominalBayar(nominal);
-    setStatusMode('LUNAS');
+    const sppFee = getStudentDefaultSpp(st);
+    setPaymentItems(prev => {
+      if (prev.length === 1 && (prev[0].paymentType.startsWith('SPP') || prev[0].paymentType === 'SPP Bulanan')) {
+        return [{
+          ...prev[0],
+          customTagihan: sppFee,
+          nominalBayar: sppFee
+        }];
+      }
+      return prev;
+    });
   };
+
+  const handleAddItem = () => {
+    const newItem: PaymentItemRow = {
+      id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      paymentType: 'Uang Gedung / Infaq Pangkal',
+      isManualPayment: false,
+      manualPaymentInput: '',
+      selectedMonth: '',
+      customTagihan: 0,
+      nominalBayar: 0
+    };
+    setPaymentItems(prev => [...prev, newItem]);
+  };
+
+  const handleRemoveItem = (id: string) => {
+    if (paymentItems.length <= 1) return;
+    setPaymentItems(prev => prev.filter(item => item.id !== id));
+  };
+
+  const handleUpdateItem = (id: string, updates: Partial<PaymentItemRow>) => {
+    setPaymentItems(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item));
+  };
+
+  // Overall totals across all items
+  const totalTagihanAll = useMemo(() => {
+    return paymentItems.reduce((acc, it) => acc + (Number(it.customTagihan) || 0), 0);
+  }, [paymentItems]);
+
+  const totalBayarAll = useMemo(() => {
+    return paymentItems.reduce((acc, it) => acc + (Number(it.nominalBayar) || 0), 0);
+  }, [paymentItems]);
+
+  const totalSisaAll = Math.max(0, totalTagihanAll - totalBayarAll);
+  const overallStatus: 'LUNAS' | 'KURANG' = (totalBayarAll >= totalTagihanAll && totalTagihanAll > 0) ? 'LUNAS' : 'KURANG';
 
   // Filtered search results for students
   const searchedStudents = useMemo(() => {
@@ -94,85 +179,97 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
     );
   }, [students, searchTerm]);
 
-  // Calculations
-  const calculatedSisa = Math.max(0, customTagihan - nominalBayar);
-
-  const handleNominalBayarChange = (val: number) => {
-    setNominalBayar(val);
-    if (val >= customTagihan && customTagihan > 0) {
-      setStatusMode('LUNAS');
-    } else {
-      setStatusMode('KURANG');
-    }
-  };
-
-  const handleQuickLunas = () => {
-    setNominalBayar(customTagihan);
-    setStatusMode('LUNAS');
-  };
-
-  const handleSubmitPayment = (e: React.FormEvent) => {
+  const handleSubmitPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedStudent) {
       alert('Pilih murid terlebih dahulu.');
       return;
     }
-    if (nominalBayar <= 0) {
-      alert('Nominal pembayaran harus lebih dari Rp 0');
+    if (paymentItems.length === 0) {
+      alert('Tambahkan minimal 1 item pembayaran.');
       return;
     }
 
-    const finalPaymentType = isManualPayment
-      ? manualPaymentInput.trim()
-      : paymentType;
+    // Validasi tiap baris item
+    for (let i = 0; i < paymentItems.length; i++) {
+      const it = paymentItems[i];
+      const finalType = it.isManualPayment ? it.manualPaymentInput.trim() : it.paymentType;
+      if (!finalType) {
+        alert(`Item ke-${i + 1}: Harap tentukan jenis pembayaran atau ketik nama pembayaran manual.`);
+        return;
+      }
+      if ((it.nominalBayar || 0) <= 0) {
+        alert(`Item ke-${i + 1} (${finalType}): Nominal pembayaran harus lebih dari Rp 0.`);
+        return;
+      }
 
-    if (!finalPaymentType) {
-      alert('Harap tentukan jenis pembayaran atau ketik nama pembayaran manual.');
-      return;
+      const isSpp = finalType === 'SPP Bulanan' || finalType.toLowerCase() === 'spp' || finalType.toLowerCase().startsWith('spp bulanan');
+      if (isSpp && it.selectedMonth && checkMonthIsLunas(it.selectedMonth)) {
+        alert(`Item ke-${i + 1}: Bulan ${it.selectedMonth} sudah berstatus LUNAS untuk ananda ${selectedStudent.nama}. Pembayaran ganda tidak dapat dilakukan.`);
+        return;
+      }
     }
 
-    // Save to customPaymentTypes list if newly created
-    if (isManualPayment && manualPaymentInput.trim() && !customPaymentTypes.includes(manualPaymentInput.trim())) {
-      setCustomPaymentTypes(prev => [...prev, manualPaymentInput.trim()]);
-    }
-
-    const isSppType = finalPaymentType.toLowerCase().includes('spp') || Boolean(selectedMonth);
-
-    // Validasi pencegahan input ganda untuk bulan yang sudah lunas
-    if (isSppType && checkMonthIsLunas(selectedMonth)) {
-      alert(`Bulan ${selectedMonth} sudah berstatus LUNAS untuk ananda ${selectedStudent.nama}. Pembayaran ganda tidak dapat dilakukan.`);
-      return;
-    }
-
-    const standardSppTitle = `SPP Bulan ${selectedMonth}`;
-    const finalJenisToSave = isSppType ? standardSppTitle : finalPaymentType;
-    const finalKeteranganToSave = keterangan.trim()
-      ? keterangan.trim()
-      : (isSppType
-          ? `${standardSppTitle} a.n ${selectedStudent.nama} (${selectedStudent.kelas})`
-          : `Pembayaran ${finalPaymentType} oleh ${selectedStudent.nama_wali}`);
-
-    const createdTrx = onProcessPayment({
-      nisn: selectedStudent.nisn,
-      nama_siswa: selectedStudent.nama,
-      kelas: selectedStudent.kelas,
-      jenis: finalJenisToSave,
-      kategori: isSppType ? 'SPP' : 'Uang Kegiatan',
-      bulan: isSppType ? selectedMonth : undefined,
-      nominal_tagihan: customTagihan,
-      nominal_bayar: nominalBayar,
-      status: statusMode,
-      petugas: operatorName,
-      keterangan: finalKeteranganToSave
+    // Daftarkan jenis manual baru ke customPaymentTypes
+    paymentItems.forEach(it => {
+      if (it.isManualPayment && it.manualPaymentInput.trim() && !customPaymentTypes.includes(it.manualPaymentInput.trim())) {
+        setCustomPaymentTypes(prev => [...prev, it.manualPaymentInput.trim()]);
+      }
     });
 
-    // Auto open receipt for printing
-    onOpenReceipt(createdTrx);
-    setKeterangan('');
-    if (isManualPayment) {
-      setPaymentType(finalPaymentType);
-      setIsManualPayment(false);
+    // Buat shared ID kuitansi gabungan (KWT-YYYY-XXXXXX)
+    const now = new Date();
+    const sharedKuitansiId = `KWT-${now.getFullYear()}-${Date.now().toString().slice(-6)}`;
+
+    // Siapkan entri transaksi terpisah di TRANSAKSI sheet untuk setiap baris (Prioritas 1 & 2)
+    const itemsToSave = paymentItems.map((it, idx) => {
+      const finalType = it.isManualPayment ? it.manualPaymentInput.trim() : it.paymentType;
+      const isSpp = finalType === 'SPP Bulanan' || finalType.toLowerCase() === 'spp' || finalType.toLowerCase().startsWith('spp bulanan');
+      const itemStatus: 'LUNAS' | 'KURANG' = (it.nominalBayar >= it.customTagihan && it.customTagihan > 0) ? 'LUNAS' : 'KURANG';
+
+      const finalJenis = finalType; // TERSIMPAN APA ADANYA! "Seragam" -> "Seragam", "SPP Bulanan" -> "SPP Bulanan"
+      const finalBulan = isSpp ? it.selectedMonth : undefined;
+      const finalKategori = isSpp ? 'SPP' : 'Uang Kegiatan';
+
+      const finalKeterangan = keterangan.trim()
+        ? (paymentItems.length > 1 ? `${keterangan.trim()} (Item ${idx + 1}: ${finalType})` : keterangan.trim())
+        : (isSpp
+            ? `SPP Bulan ${it.selectedMonth} a.n ${selectedStudent.nama} (${selectedStudent.kelas})`
+            : `Pembayaran ${finalType} oleh ${selectedStudent.nama_wali || selectedStudent.nama}`);
+
+      return {
+        nisn: selectedStudent.nisn,
+        nama_siswa: selectedStudent.nama,
+        kelas: selectedStudent.kelas,
+        jenis: finalJenis,
+        kategori: finalKategori,
+        bulan: finalBulan,
+        nominal_tagihan: it.customTagihan,
+        nominal_bayar: it.nominalBayar,
+        status: itemStatus,
+        petugas: operatorName,
+        keterangan: finalKeterangan,
+        id_kuitansi_gabungan: sharedKuitansiId
+      };
+    });
+
+    let firstTrx: Transaction | undefined;
+
+    if (onProcessPaymentBatch) {
+      const res = await onProcessPaymentBatch(itemsToSave, sharedKuitansiId);
+      firstTrx = res.transactions[0];
+    } else {
+      const res = await StorageService.processPaymentBatch(itemsToSave, sharedKuitansiId);
+      firstTrx = res.transactions[0];
     }
+
+    if (firstTrx) {
+      onOpenReceipt(firstTrx);
+    }
+
+    // Reset formulir kembali ke 1 item standar
+    setPaymentItems([createDefaultItem(selectedStudent)]);
+    setKeterangan('');
   };
 
   const handleConfirmCancel = () => {
@@ -287,17 +384,26 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
     return found ? found.status === 'LUNAS' : false;
   };
 
-  // Otomatis arahkan selectedMonth ke bulan pertama yang belum lunas
+  // Otomatis arahkan bulan item SPP pertama ke bulan yang belum lunas jika belum terisi
   useEffect(() => {
     if (monthsList.length === 0) return;
-    if (!monthsList.includes(selectedMonth) || checkMonthIsLunas(selectedMonth)) {
-      const firstUnpaid = monthsList.find(m => !checkMonthIsLunas(m));
-      if (firstUnpaid) {
-        setSelectedMonth(firstUnpaid);
-      } else if (monthsList.length > 0) {
-        setSelectedMonth(monthsList[0]);
-      }
-    }
+    const firstUnpaid = monthsList.find(m => !checkMonthIsLunas(m)) || monthsList[0];
+    if (!firstUnpaid) return;
+
+    setPaymentItems(prev => {
+      let modified = false;
+      const next = prev.map(item => {
+        const isSpp = (!item.isManualPayment && (item.paymentType.startsWith('SPP') || item.paymentType === 'SPP Bulanan')) ||
+          (item.isManualPayment && item.manualPaymentInput.toLowerCase().includes('spp'));
+
+        if (isSpp && (!item.selectedMonth || !monthsList.includes(item.selectedMonth) || checkMonthIsLunas(item.selectedMonth))) {
+          modified = true;
+          return { ...item, selectedMonth: firstUnpaid };
+        }
+        return item;
+      });
+      return modified ? next : prev;
+    });
   }, [selectedStudent?.nisn, transactions, monthsList, studentSppSummary]);
 
   const paymentTypeOptions = [
@@ -452,174 +558,244 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
             </div>
 
             <form onSubmit={handleSubmitPayment} className="space-y-4">
-              {/* Row 1: Jenis Pembayaran & Periode Bulan */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold text-slate-700 uppercase">
-                      Jenis Pembayaran
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsManualPayment(!isManualPayment);
-                        if (!isManualPayment) setManualPaymentInput('');
-                      }}
-                      className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 transition-colors inline-flex items-center gap-1 cursor-pointer"
-                    >
-                      {isManualPayment ? (
-                        <span>&larr; Pilih dari Daftar</span>
-                      ) : (
-                        <>
-                          <Plus className="w-3 h-3" />
-                          <span>+ Buat Jenis Manual</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                  {isManualPayment ? (
-                    <div className="space-y-1">
-                      <div className="relative">
-                        <input
-                          type="text"
-                          required
-                          value={manualPaymentInput}
-                          onChange={(e) => setManualPaymentInput(e.target.value)}
-                          placeholder="Ketik jenis pembayaran baru..."
-                          className="w-full pl-3 pr-8 py-2 text-xs sm:text-sm bg-white border border-emerald-400 ring-2 ring-emerald-100 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:outline-hidden"
-                          autoFocus
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setIsManualPayment(false)}
-                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-bold cursor-pointer"
-                          title="Tutup mode manual"
-                        >
-                          &times;
-                        </button>
-                      </div>
-                      <p className="text-[10px] text-emerald-700 font-medium">
-                        &bull; Bendahara dapat memasukkan nama transaksi apa pun secara bebas
-                      </p>
-                    </div>
-                  ) : (
-                    <select
-                      value={paymentType}
-                      onChange={(e) => {
-                        const type = e.target.value;
-                        if (type === '__CUSTOM_MANUAL__') {
-                          setIsManualPayment(true);
-                          setManualPaymentInput('');
-                          return;
-                        }
-                        setPaymentType(type);
-                        if (type.startsWith('SPP')) {
-                          const fee = selectedStudent?.spp_nominal || 500000;
-                          setCustomTagihan(fee);
-                          setNominalBayar(fee);
-                        }
-                      }}
-                      className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
-                    >
-                      <optgroup label="Pilihan Standar">
-                        {paymentTypeOptions.map(p => (
-                          <option key={p} value={p}>{p}</option>
-                        ))}
-                      </optgroup>
-                      {customPaymentTypes.length > 0 && (
-                        <optgroup label="Jenis Pembayaran Manual / Kustom">
-                          {customPaymentTypes.map(c => (
-                            <option key={c} value={c}>{c}</option>
-                          ))}
-                        </optgroup>
-                      )}
-                      <option value="__CUSTOM_MANUAL__" className="font-bold text-emerald-700">
-                        + Buat Jenis Pembayaran Manual Lainnya...
-                      </option>
-                    </select>
-                  )}
+              {/* Daftar Item Pembayaran (Multi-Item Dalam Satu Kuitansi - Prioritas 2) */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Rincian Item Pembayaran ({paymentItems.length} Item)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleAddItem}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-lg border border-emerald-300 transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>+ Tambah Item Pembayaran</span>
+                  </button>
                 </div>
 
-                {((!isManualPayment && paymentType.startsWith('SPP')) || (isManualPayment && manualPaymentInput.toLowerCase().includes('spp'))) && (
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                      Periode Bulan SPP
-                    </label>
-                    <select
-                      value={selectedMonth}
-                      onChange={(e) => setSelectedMonth(e.target.value)}
-                      className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
+                {paymentItems.map((item, index) => {
+                  const isSppItem = (!item.isManualPayment && (item.paymentType.startsWith('SPP') || item.paymentType === 'SPP Bulanan')) ||
+                    (item.isManualPayment && item.manualPaymentInput.toLowerCase().includes('spp'));
+                  const itemSisa = Math.max(0, (item.customTagihan || 0) - (item.nominalBayar || 0));
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3 relative group"
                     >
-                      {monthsList.map(m => {
-                        const isLunas = checkMonthIsLunas(m);
-                        return (
-                          <option
-                            key={m}
-                            value={m}
-                            disabled={isLunas}
-                            className={isLunas ? 'text-slate-400 bg-slate-100 italic' : 'text-slate-900 font-medium'}
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                        <span className="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
+                          <span className="w-5 h-5 rounded-full bg-emerald-700 text-white text-[11px] flex items-center justify-center font-bold">
+                            {index + 1}
+                          </span>
+                          Item #{index + 1}
+                        </span>
+
+                        {paymentItems.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveItem(item.id)}
+                            className="text-xs font-semibold text-rose-600 hover:text-rose-800 flex items-center gap-1 cursor-pointer"
+                            title="Hapus baris item ini"
                           >
-                            {m} {isLunas ? '(Sudah Lunas)' : ''}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </div>
-                )}
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Hapus</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Baris Jenis Pembayaran & Periode Bulan (khusus SPP) */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-[11px] font-bold text-slate-700 uppercase">
+                              Jenis Pembayaran
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleUpdateItem(item.id, {
+                                  isManualPayment: !item.isManualPayment,
+                                  manualPaymentInput: ''
+                                });
+                              }}
+                              className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              {item.isManualPayment ? (
+                                <span>&larr; Pilih dari Daftar</span>
+                              ) : (
+                                <>
+                                  <Plus className="w-2.5 h-2.5" />
+                                  <span>+ Buat Jenis Manual</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+
+                          {item.isManualPayment ? (
+                            <div className="space-y-1">
+                              <div className="relative">
+                                <input
+                                  type="text"
+                                  required
+                                  value={item.manualPaymentInput}
+                                  onChange={(e) => handleUpdateItem(item.id, { manualPaymentInput: e.target.value })}
+                                  placeholder="Ketik jenis pembayaran manual (cth: Seragam, Gedung)..."
+                                  className="w-full pl-3 pr-8 py-2 text-xs bg-white border border-emerald-400 ring-2 ring-emerald-100 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:outline-hidden font-medium"
+                                  autoFocus
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateItem(item.id, { isManualPayment: false })}
+                                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-bold cursor-pointer"
+                                  title="Tutup mode manual"
+                                >
+                                  &times;
+                                </button>
+                              </div>
+                              <p className="text-[10px] text-emerald-700 font-medium">
+                                &bull; Akan disimpan & dicetak APA ADANYA (tanpa imbuhan SPP)
+                              </p>
+                            </div>
+                          ) : (
+                            <select
+                              value={item.paymentType}
+                              onChange={(e) => {
+                                const type = e.target.value;
+                                if (type === '__CUSTOM_MANUAL__') {
+                                  handleUpdateItem(item.id, {
+                                    isManualPayment: true,
+                                    manualPaymentInput: ''
+                                  });
+                                  return;
+                                }
+
+                                const isNowSpp = type.startsWith('SPP') || type === 'SPP Bulanan';
+                                const fee = isNowSpp ? (selectedStudent?.spp_nominal || 85000) : 0;
+                                handleUpdateItem(item.id, {
+                                  paymentType: type,
+                                  isManualPayment: false,
+                                  customTagihan: fee,
+                                  nominalBayar: fee
+                                });
+                              }}
+                              className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600"
+                            >
+                              <optgroup label="Pilihan Standar">
+                                {paymentTypeOptions.map(p => (
+                                  <option key={p} value={p}>{p}</option>
+                                ))}
+                              </optgroup>
+                              {customPaymentTypes.length > 0 && (
+                                <optgroup label="Jenis Pembayaran Manual / Kustom">
+                                  {customPaymentTypes.map(c => (
+                                    <option key={c} value={c}>{c}</option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              <option value="__CUSTOM_MANUAL__" className="font-bold text-emerald-700">
+                                + Buat Jenis Pembayaran Manual Lainnya...
+                              </option>
+                            </select>
+                          )}
+                        </div>
+
+                        {/* Periode Bulan SPP (HANYA tampil jika jenis memang SPP) */}
+                        {isSppItem ? (
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                              Periode Bulan SPP
+                            </label>
+                            <select
+                              value={item.selectedMonth}
+                              onChange={(e) => handleUpdateItem(item.id, { selectedMonth: e.target.value })}
+                              className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600"
+                            >
+                              {monthsList.map(m => {
+                                const isLunas = checkMonthIsLunas(m);
+                                return (
+                                  <option
+                                    key={m}
+                                    value={m}
+                                    disabled={isLunas}
+                                    className={isLunas ? 'text-slate-400 bg-slate-100 italic' : 'text-slate-900 font-medium'}
+                                  >
+                                    {m} {isLunas ? '(Sudah Lunas)' : ''}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          </div>
+                        ) : (
+                          <div className="flex items-center text-xs text-slate-500 pt-5 italic">
+                            * Non-SPP tidak memerlukan periode bulan
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Baris Nominal Tagihan & Nominal Dibayar */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-700 uppercase mb-1 block">
+                            Nominal Tagihan (Rp)
+                          </label>
+                          <input
+                            type="number"
+                            required
+                            min="0"
+                            value={item.customTagihan}
+                            onChange={(e) => {
+                              const val = Math.max(0, Number(e.target.value) || 0);
+                              handleUpdateItem(item.id, { customTagihan: val });
+                            }}
+                            className="w-full px-3 py-2 text-xs font-bold text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600"
+                          />
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-[11px] font-bold text-slate-700 uppercase">
+                              Nominal Dibayar (Rp)
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleUpdateItem(item.id, { nominalBayar: item.customTagihan });
+                              }}
+                              className="text-[10px] font-bold text-emerald-700 hover:underline cursor-pointer"
+                            >
+                              Set Lunas Penuh
+                            </button>
+                          </div>
+                          <input
+                            type="number"
+                            required
+                            min="1"
+                            value={item.nominalBayar}
+                            onChange={(e) => {
+                              const val = Math.max(0, Number(e.target.value) || 0);
+                              handleUpdateItem(item.id, { nominalBayar: val });
+                            }}
+                            className="w-full px-3 py-2 text-xs font-extrabold text-emerald-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600"
+                          />
+                        </div>
+                      </div>
+
+                      {itemSisa > 0 && (
+                        <div className="text-[11px] font-bold text-amber-700 text-right">
+                          Kurang Bayar Item #{index + 1}: {formatRupiah(itemSisa)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
-              {/* Row 2: Tagihan & Pembayaran */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-bold text-slate-700 uppercase">
-                      Nominal Tagihan (Rp)
-                    </label>
-                    {selectedStudent?.spp_kategori !== 'REGULER' && (
-                      <span className="text-[10px] font-bold text-amber-700">SPP Khusus</span>
-                    )}
-                  </div>
-                  <input
-                    type="number"
-                    required
-                    value={customTagihan}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      setCustomTagihan(val);
-                      if (val <= nominalBayar) setStatusMode('LUNAS');
-                    }}
-                    className="w-full px-3 py-2 text-sm font-bold text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-bold text-slate-700 uppercase">
-                      Nominal Dibayar (Rp)
-                    </label>
-                    <button
-                      type="button"
-                      onClick={handleQuickLunas}
-                      className="text-[10px] font-bold text-emerald-700 hover:underline cursor-pointer"
-                    >
-                      Set Lunas Penuh
-                    </button>
-                  </div>
-                  <input
-                    type="number"
-                    required
-                    value={nominalBayar}
-                    onChange={(e) => handleNominalBayarChange(Number(e.target.value))}
-                    className="w-full px-3 py-2 text-base font-extrabold text-emerald-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600"
-                  />
-                </div>
-              </div>
-
-              {/* STATUS & SISA CALCULATION (Auto Calculated) */}
-              <div className="p-4 rounded-xl border transition-all flex items-center justify-between bg-slate-50 border-slate-200">
+              {/* TOTAL KESELURUHAN & STATUS AKUMULATIF (Prioritas 2) */}
+              <div className="p-4 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between bg-slate-100/80 border-slate-300 gap-3">
                 <div className="flex items-center gap-3">
-                  {statusMode === 'LUNAS' ? (
+                  {overallStatus === 'LUNAS' ? (
                     <div className="p-2.5 rounded-full bg-emerald-100 text-emerald-800">
                       <CheckCircle className="w-6 h-6" />
                     </div>
@@ -630,19 +806,22 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
                   )}
                   <div>
                     <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                      Status Transaksi
+                      Total Pembayaran ({paymentItems.length} Item)
                     </div>
-                    <div className={`text-base font-extrabold ${statusMode === 'LUNAS' ? 'text-emerald-700' : 'text-amber-700'}`}>
-                      {statusMode === 'LUNAS' ? 'LUNAS SELESAI' : 'KURANG BAYAR (CICILAN)'}
+                    <div className={`text-base font-extrabold ${overallStatus === 'LUNAS' ? 'text-emerald-700' : 'text-amber-700'}`}>
+                      {overallStatus === 'LUNAS' ? 'LUNAS KESELURUHAN' : 'KURANG BAYAR (CICILAN)'}
+                    </div>
+                    <div className="text-xs text-slate-600 mt-0.5">
+                      Total Tagihan: <span className="font-bold">{formatRupiah(totalTagihanAll)}</span> &bull; Total Bayar: <span className="font-extrabold text-emerald-800">{formatRupiah(totalBayarAll)}</span>
                     </div>
                   </div>
                 </div>
 
-                {statusMode === 'KURANG' && (
-                  <div className="text-right">
-                    <span className="text-xs text-rose-600 font-bold uppercase">Kekurangan Tagihan:</span>
+                {totalSisaAll > 0 && (
+                  <div className="text-left sm:text-right">
+                    <span className="text-xs text-rose-600 font-bold uppercase">Kekurangan Total:</span>
                     <div className="text-lg font-black text-rose-700">
-                      Kurang {formatRupiah(calculatedSisa)}
+                      Kurang {formatRupiah(totalSisaAll)}
                     </div>
                   </div>
                 )}

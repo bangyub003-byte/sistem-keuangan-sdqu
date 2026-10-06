@@ -54,6 +54,7 @@ export interface Transaction {
   petugas: string;
   keterangan?: string;
   alasan_batal?: string;
+  id_kuitansi_gabungan?: string;
 }
 
 export type KeuanganType = 'MASUK' | 'KELUAR';
