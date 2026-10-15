@@ -175,7 +175,7 @@ function perbaikiSemuaHeader() {
 
   setupInstallableTrigger();
   bumpVersion();
-  Logger.log("Hasil perbaikiSemuaHeader:\n" + report.join("\n"));
+  Logger.log("Hasil perbaikiSemuaHeader: " + report.join(", "));
   return { status: "success", report: report, version: getVersion() };
 }
 

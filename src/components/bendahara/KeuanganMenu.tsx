@@ -96,10 +96,7 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
 
   // Active Kategori Dana List
   const activeKategoriList = useMemo(() => {
-    if (kategoriDana && kategoriDana.length > 0) {
-      return kategoriDana.filter(kd => kd.status_aktif !== false);
-    }
-    return [
+    const defaultList: KategoriDana[] = [
       { id_kategori: 'KAT-SPP', nama_kategori: 'SPP' },
       { id_kategori: 'KAT-DONASI', nama_kategori: 'Donasi & Infaq' },
       { id_kategori: 'KAT-TABUNGAN', nama_kategori: 'Tabungan Siswa' },
@@ -109,6 +106,34 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
       { id_kategori: 'KAT-OPERASIONAL', nama_kategori: 'Operasional' },
       { id_kategori: 'KAT-LAIN', nama_kategori: 'Lain-lain' }
     ];
+
+    const source = (kategoriDana && kategoriDana.length > 0) ? kategoriDana : defaultList;
+    const seenIds = new Set<string>();
+    const seenNames = new Set<string>();
+    const uniqueList: KategoriDana[] = [];
+
+    source.forEach((kd, idx) => {
+      if (kd.status_aktif === false) return;
+      const cleanName = (kd.nama_kategori || '').trim();
+      if (!cleanName) return;
+      const lowerName = cleanName.toLowerCase();
+      if (seenNames.has(lowerName)) return;
+
+      let cleanId = (kd.id_kategori || '').trim();
+      if (!cleanId || seenIds.has(cleanId)) {
+        cleanId = `KAT-${idx}-${Date.now()}`;
+      }
+
+      seenIds.add(cleanId);
+      seenNames.add(lowerName);
+      uniqueList.push({
+        ...kd,
+        id_kategori: cleanId,
+        nama_kategori: cleanName
+      });
+    });
+
+    return uniqueList.length > 0 ? uniqueList : defaultList;
   }, [kategoriDana]);
 
   const sumberDanaMap = useMemo(() => {
@@ -398,9 +423,9 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
           </span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {categoryBalances.map(cat => (
+          {categoryBalances.map((cat, idx) => (
             <div
-              key={cat.id_kategori}
+              key={`${cat.id_kategori}-${idx}`}
               className="p-3 rounded-xl border border-slate-200/80 bg-slate-50/50 hover:bg-slate-50 hover:border-slate-300 transition-all"
             >
               <div className="text-[11px] font-bold text-slate-600 truncate mb-1" title={cat.nama_kategori}>
@@ -812,8 +837,8 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
                               className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600"
                             >
                               <option value="" disabled>-- Pilih Sumber Dana --</option>
-                              {activeKategoriList.map(kd => (
-                                <option key={kd.id_kategori} value={kd.id_kategori}>
+                              {activeKategoriList.map((kd, idx) => (
+                                <option key={`${kd.id_kategori}-${idx}`} value={kd.id_kategori}>
                                   {kd.nama_kategori}
                                 </option>
                               ))}

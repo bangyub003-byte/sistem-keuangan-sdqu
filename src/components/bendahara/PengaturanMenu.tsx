@@ -52,6 +52,7 @@ export const PengaturanMenu: React.FC<PengaturanMenuProps> = ({
     message: ''
   });
   const [copiedCode, setCopiedCode] = useState(false);
+  const [copyGasError, setCopyGasError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   // New Announcement Form State
@@ -114,9 +115,18 @@ export const PengaturanMenu: React.FC<PengaturanMenuProps> = ({
   };
 
   const handleCopyGasCode = () => {
-    navigator.clipboard.writeText(GOOGLE_APPS_SCRIPT_CODE);
-    setCopiedCode(true);
-    setTimeout(() => setCopiedCode(false), 2500);
+    try {
+      // Uji kode dengan new Function(kode). Jika SyntaxError, JANGAN salin; tampilkan pesan jelas.
+      new Function(GOOGLE_APPS_SCRIPT_CODE);
+      setCopyGasError(null);
+      navigator.clipboard.writeText(GOOGLE_APPS_SCRIPT_CODE);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2500);
+    } catch (err: any) {
+      console.error("SyntaxError pada kode Apps Script:", err);
+      const errMsg = err?.message || String(err);
+      setCopyGasError(`Kode Apps Script memiliki SyntaxError: ${errMsg}. Kode TIDAK disalin ke clipboard.`);
+    }
   };
 
   const handleTestConnection = async () => {
@@ -890,6 +900,16 @@ export const PengaturanMenu: React.FC<PengaturanMenuProps> = ({
               <span>{copiedCode ? 'Tersalin!' : 'Salin Kode Apps Script (Code.gs)'}</span>
             </button>
           </div>
+
+          {copyGasError && (
+            <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl text-xs text-rose-800 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <div>
+                <strong className="block font-bold">Pemeriksaan Sintaks Gagal:</strong>
+                <span>{copyGasError}</span>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">

@@ -180,7 +180,25 @@ export class StorageService {
       const data = localStorage.getItem(STORAGE_KEYS.KATEGORI_DANA);
       if (!data) return INITIAL_KATEGORI_DANA;
       const parsed = JSON.parse(data);
-      return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_KATEGORI_DANA;
+      if (!Array.isArray(parsed) || parsed.length === 0) return INITIAL_KATEGORI_DANA;
+
+      const seenIds = new Set<string>();
+      const deduped: KategoriDana[] = [];
+      parsed.forEach((k: any, idx: number) => {
+        if (!k || !k.nama_kategori) return;
+        let id = String(k.id_kategori || '').trim();
+        if (!id || seenIds.has(id)) {
+          id = `KAT-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`;
+        }
+        seenIds.add(id);
+        deduped.push({
+          id_kategori: id,
+          nama_kategori: String(k.nama_kategori).trim(),
+          keterangan: String(k.keterangan || ''),
+          status_aktif: k.status_aktif !== false
+        });
+      });
+      return deduped.length > 0 ? deduped : INITIAL_KATEGORI_DANA;
     } catch {
       return INITIAL_KATEGORI_DANA;
     }
@@ -977,9 +995,14 @@ export class StorageService {
     gasResult?: any;
   }> {
     const list = this.getKategoriDana();
+    const cleanName = nama_kategori.trim();
+    const existing = list.find(k => k.nama_kategori.toLowerCase() === cleanName.toLowerCase());
+    if (existing) {
+      return { kategori: existing };
+    }
     const newKat: KategoriDana = {
-      id_kategori: `KAT-${Date.now()}`,
-      nama_kategori: nama_kategori.trim(),
+      id_kategori: `KAT-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      nama_kategori: cleanName,
       keterangan,
       status_aktif: true
     };
@@ -1403,12 +1426,22 @@ export class StorageService {
       }) : [];
 
       // Parse Kategori Dana
-      const parsedKategoriDana: KategoriDana[] = Array.isArray(data.kategori_dana) ? data.kategori_dana.filter((kd: any) => kd.nama_kategori).map((kd: any) => ({
-        id_kategori: String(kd.id_kategori || `KAT-${Date.now()}`),
-        nama_kategori: String(kd.nama_kategori),
-        keterangan: String(kd.keterangan || ''),
-        status_aktif: kd.status_aktif !== false && kd.status_aktif !== 'false' && kd.status_aktif !== 0
-      })) : [];
+      const seenKategoriIds = new Set<string>();
+      const parsedKategoriDana: KategoriDana[] = Array.isArray(data.kategori_dana) ? data.kategori_dana
+        .filter((kd: any) => kd && kd.nama_kategori)
+        .map((kd: any, idx: number) => {
+          let id = String(kd.id_kategori || '').trim();
+          if (!id || seenKategoriIds.has(id)) {
+            id = `KAT-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`;
+          }
+          seenKategoriIds.add(id);
+          return {
+            id_kategori: id,
+            nama_kategori: String(kd.nama_kategori).trim(),
+            keterangan: String(kd.keterangan || ''),
+            status_aktif: kd.status_aktif !== false && kd.status_aktif !== 'false' && kd.status_aktif !== 0
+          };
+        }) : [];
 
       // Parse Users
       const parsedUsers: UserAccount[] = Array.isArray(data.users) ? data.users.filter((u: any) => u.username).map((u: any) => ({
