@@ -119,11 +119,51 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
   const isMultiItemKas = kasReceiptItems.length > 1;
   const totalNominalKas = kasReceiptItems.reduce((acc, k) => acc + (Number(k.nominal) || 0), 0);
 
+  const activeNamaPihak = useMemo(() => {
+    if (!kasRecord) return '';
+    if (kasRecord.nama_pihak && kasRecord.nama_pihak.trim()) return kasRecord.nama_pihak.trim();
+    const found = kasReceiptItems.find(k => k.nama_pihak && k.nama_pihak.trim());
+    return found?.nama_pihak?.trim() || '';
+  }, [kasRecord, kasReceiptItems]);
+
+  const activeAlamatPihak = useMemo(() => {
+    if (!kasRecord) return '';
+    if (kasRecord.alamat_pihak && kasRecord.alamat_pihak.trim()) return kasRecord.alamat_pihak.trim();
+    const found = kasReceiptItems.find(k => k.alamat_pihak && k.alamat_pihak.trim());
+    return found?.alamat_pihak?.trim() || '';
+  }, [kasRecord, kasReceiptItems]);
+
   const isMultiItem = receiptItems.length > 1;
   const totalTagihanReceipt = receiptItems.reduce((acc, t) => acc + (t.nominal_tagihan || 0), 0);
   const totalBayarReceipt = receiptItems.reduce((acc, t) => acc + (t.nominal_bayar || 0), 0);
   const totalSisaReceipt = receiptItems.reduce((acc, t) => acc + (t.sisa || 0), 0);
   const overallReceiptStatus = totalSisaReceipt === 0 ? 'LUNAS' : 'KURANG';
+
+  const currentReceiptStudent = useMemo(() => {
+    if (student) return student;
+    if (linkedStudent) return linkedStudent;
+    if (transaction?.nisn) {
+      return safeStudents.find(s => s.nisn === transaction.nisn) || null;
+    }
+    if (transaction?.nama_siswa) {
+      return safeStudents.find(s => s.nama.toLowerCase().trim() === transaction.nama_siswa?.toLowerCase().trim()) || null;
+    }
+    return null;
+  }, [student, linkedStudent, transaction, safeStudents]);
+
+  const receiptUangDiterima = useMemo(() => {
+    if (!transaction) return undefined;
+    if (transaction.uang_diterima !== undefined && transaction.uang_diterima !== null) return transaction.uang_diterima;
+    const found = receiptItems.find(t => t.uang_diterima !== undefined && t.uang_diterima !== null);
+    return found?.uang_diterima;
+  }, [transaction, receiptItems]);
+
+  const receiptKembalian = useMemo(() => {
+    if (!transaction) return undefined;
+    if (transaction.kembalian !== undefined && transaction.kembalian !== null) return transaction.kembalian;
+    const found = receiptItems.find(t => t.kembalian !== undefined && t.kembalian !== null);
+    return found?.kembalian;
+  }, [transaction, receiptItems]);
 
   const handlePrint = (e?: React.MouseEvent) => {
     if (e) {
@@ -243,7 +283,9 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
               </h1>
               <p className="text-xs text-slate-600 mt-1 font-medium leading-relaxed">{setting.alamat}</p>
               <p className="text-xs text-emerald-800 font-semibold mt-0.5">
-                NPSN: 69987123 | Terakreditasi A | Kontak WhatsApp: {setting.no_wa}
+                {setting.npsn ? `NPSN: ${setting.npsn}` : 'NPSN: 69987123'}
+                {setting.akreditasi ? ` | Terakreditasi ${setting.akreditasi}` : ''}
+                {setting.no_wa ? ` | Kontak WhatsApp: ${setting.no_wa}` : ''}
               </p>
             </div>
           </div>
@@ -268,14 +310,35 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                         <td className="py-1 text-slate-500 w-32">Nama Murid</td>
                         <td className="py-1 font-bold text-slate-900">: {studentName}</td>
                       </tr>
-                      <tr>
-                        <td className="py-1 text-slate-500">NISN</td>
-                        <td className="py-1 font-mono font-medium">: {studentNisn}</td>
-                      </tr>
+                      {studentNisn && studentNisn !== '-' ? (
+                        <tr>
+                          <td className="py-1 text-slate-500">NISN</td>
+                          <td className="py-1 font-mono font-medium">: {studentNisn}</td>
+                        </tr>
+                      ) : (
+                        <tr>
+                          <td className="py-1 text-slate-500">NIK</td>
+                          <td className="py-1 font-mono font-medium">
+                            : {currentReceiptStudent?.nik ? `************${currentReceiptStudent.nik.slice(-4)}` : '-'}
+                          </td>
+                        </tr>
+                      )}
+                      {currentReceiptStudent?.tanggal_lahir && (
+                        <tr>
+                          <td className="py-1 text-slate-500">Tanggal Lahir</td>
+                          <td className="py-1">: {currentReceiptStudent.tanggal_lahir}</td>
+                        </tr>
+                      )}
                       <tr>
                         <td className="py-1 text-slate-500">Tingkat / Kelas</td>
                         <td className="py-1">: {studentClass}</td>
                       </tr>
+                      {currentReceiptStudent?.nama_wali && currentReceiptStudent.nama_wali.trim() !== '' && (
+                        <tr>
+                          <td className="py-1 text-slate-500">Nama Wali</td>
+                          <td className="py-1">: {currentReceiptStudent.nama_wali}</td>
+                        </tr>
+                      )}
                       <tr>
                         <td className="py-1 text-slate-500">Asal Lembaga</td>
                         <td className="py-1">: {setting.nama_sekolah}</td>
@@ -387,6 +450,30 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                       {formatRupiah(totalSisaReceipt)}
                     </td>
                   </tr>
+
+                  {/* Baris Uang Diterima & Kembalian jika bantuan alokasi dipakai */}
+                  {receiptUangDiterima !== undefined && receiptUangDiterima > 0 && (
+                    <>
+                      <tr className="bg-emerald-50/60 font-bold text-xs sm:text-sm">
+                        <td colSpan={3} className="border border-slate-300 p-2 text-right text-emerald-950">
+                          Total Uang Diterima:
+                        </td>
+                        <td colSpan={2} className="border border-slate-300 p-2 text-right font-mono font-bold text-emerald-900">
+                          {formatRupiah(receiptUangDiterima)}
+                        </td>
+                      </tr>
+                      {receiptKembalian !== undefined && (
+                        <tr className="bg-emerald-50/30 font-bold text-xs sm:text-sm">
+                          <td colSpan={3} className="border border-slate-300 p-2 text-right text-slate-700">
+                            Kembalian:
+                          </td>
+                          <td colSpan={2} className="border border-slate-300 p-2 text-right font-mono font-bold text-slate-800">
+                            {formatRupiah(receiptKembalian)}
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -406,24 +493,25 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                 </p>
               </div>
 
+              {/* Blok Informasi Kuitansi Kas: Nama Pembayar/Dibayarkan Kepada & Alamat */}
               <div className="grid grid-cols-2 gap-4 text-xs sm:text-sm mb-6 bg-slate-50 p-4 rounded-lg border border-slate-200">
                 <div>
                   <table className="w-full">
                     <tbody>
-                      <tr>
-                        <td className="py-1 text-slate-500 w-36">Jenis Transaksi</td>
-                        <td className="py-1 font-bold text-slate-900">: Kas {kasRecord.jenis === 'MASUK' ? 'Masuk (Penerimaan)' : 'Keluar (Pengeluaran)'}</td>
-                      </tr>
-                      <tr>
-                        <td className="py-1 text-slate-500">Kategori Kas</td>
-                        <td className="py-1 font-medium text-slate-800">
-                          : {isMultiItemKas ? `${kasReceiptItems.length} Pos Kategori` : kasRecord.kategori}
-                        </td>
-                      </tr>
-                      <tr>
-                        <td className="py-1 text-slate-500">Asal Lembaga</td>
-                        <td className="py-1">: {setting.nama_sekolah}</td>
-                      </tr>
+                      {activeNamaPihak && activeNamaPihak.trim() !== '' && (
+                        <tr>
+                          <td className="py-1 text-slate-500 w-36">
+                            {kasRecord.jenis === 'MASUK' ? 'Nama Pembayar' : 'Dibayarkan Kepada'}
+                          </td>
+                          <td className="py-1 font-bold text-slate-900">: {activeNamaPihak}</td>
+                        </tr>
+                      )}
+                      {activeAlamatPihak && activeAlamatPihak.trim() !== '' && (
+                        <tr>
+                          <td className="py-1 text-slate-500 w-36">Alamat</td>
+                          <td className="py-1 font-medium text-slate-800">: {activeAlamatPihak}</td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -449,13 +537,13 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                 </div>
               </div>
 
-              {/* Rincian Finansial Kas (Satu Item atau Multi-Item) */}
+              {/* Rincian Finansial Kas: Urutan Kolom Baru No | Kategori | Uraian / Keterangan | Jumlah Nominal */}
               <table className="w-full border-collapse border border-slate-300 text-xs sm:text-sm mb-6">
                 <thead>
                   <tr className="bg-emerald-800 text-white">
                     <th className="border border-slate-300 p-2 text-center w-12">No</th>
-                    <th className="border border-slate-300 p-2 text-left">Uraian / Keterangan Transaksi Kas</th>
                     <th className="border border-slate-300 p-2 text-center w-36">Kategori</th>
+                    <th className="border border-slate-300 p-2 text-left">Uraian / Keterangan</th>
                     <th className="border border-slate-300 p-2 text-right w-44">Jumlah Nominal</th>
                   </tr>
                 </thead>
@@ -463,11 +551,11 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                   {kasReceiptItems.map((item, idx) => (
                     <tr key={item.id_keuangan || idx}>
                       <td className="border border-slate-300 p-2 text-center">{idx + 1}</td>
-                      <td className="border border-slate-300 p-2 font-medium">
-                        {item.keterangan || `Transaksi Kas ${item.jenis === 'MASUK' ? 'Masuk' : 'Keluar'} - ${item.kategori}`}
-                      </td>
                       <td className="border border-slate-300 p-2 text-center font-medium">
                         {item.kategori}
+                      </td>
+                      <td className="border border-slate-300 p-2 font-medium">
+                        {item.keterangan || `Transaksi Kas ${item.jenis === 'MASUK' ? 'Masuk' : 'Keluar'} - ${item.kategori}`}
                       </td>
                       <td className="border border-slate-300 p-2 text-right font-bold text-emerald-800 font-mono text-sm">
                         {formatRupiah(item.nominal)}

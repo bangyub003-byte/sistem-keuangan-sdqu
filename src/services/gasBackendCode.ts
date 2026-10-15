@@ -93,9 +93,9 @@ function perbaikiSemuaHeader() {
   var requiredSheets = {
     "USER": ["id_user", "username", "password", "nama", "role", "id_siswa", "nisn"],
     "SISWA": ["id_siswa", "nisn", "nik", "nama", "tempat_lahir", "tanggal_lahir", "jenis_kelamin", "kelas", "nama_wali", "no_hp", "alamat", "foto", "spp_nominal", "spp_kategori", "spp_catatan", "status_aktif", "spp_mulai_bulan", "spp_mulai_tahun"],
-    "TRANSAKSI": ["id_transaksi", "tanggal", "nisn", "nama_siswa", "kelas", "jenis", "kategori", "bulan", "nominal_tagihan", "nominal_bayar", "sisa", "status", "petugas", "keterangan", "alasan_batal", "waktu"],
-    "KEUANGAN": ["id_keuangan", "tanggal", "jenis", "kategori", "nominal", "keterangan", "bukti", "petugas", "status", "alasan_batal", "id_kategori", "waktu"],
-    "SETTING": ["nama_sekolah", "logo", "alamat", "no_wa", "kop_surat", "tahun_ajaran", "nama_kepsek", "nama_bendahara", "spp_default_nominal", "nama_bank", "no_rekening", "atas_nama_rekening", "qris_image", "spp_mulai_bulan", "spp_mulai_tahun"],
+    "TRANSAKSI": ["id_transaksi", "tanggal", "nisn", "nama_siswa", "kelas", "jenis", "kategori", "bulan", "nominal_tagihan", "nominal_bayar", "sisa", "status", "petugas", "keterangan", "alasan_batal", "waktu", "id_kuitansi_gabungan", "uang_diterima", "kembalian"],
+    "KEUANGAN": ["id_keuangan", "tanggal", "jenis", "kategori", "nominal", "keterangan", "bukti", "petugas", "status", "alasan_batal", "id_kategori", "waktu", "id_kuitansi_gabungan", "nama_pihak", "alamat_pihak"],
+    "SETTING": ["nama_sekolah", "logo", "alamat", "no_wa", "kop_surat", "tahun_ajaran", "nama_kepsek", "nama_bendahara", "spp_default_nominal", "nama_bank", "no_rekening", "atas_nama_rekening", "qris_image", "spp_mulai_bulan", "spp_mulai_tahun", "npsn", "akreditasi"],
     "PENGUMUMAN": ["id_pengumuman", "tanggal", "judul", "isi", "penulis", "is_penting", "status_aktif"],
     "KATEGORI_DANA": ["id_kategori", "nama_kategori", "keterangan", "status_aktif"],
     "LOG": ["tanggal", "user", "aktivitas"]
@@ -379,9 +379,9 @@ function checkAndInitSheets(ss) {
   var requiredSheets = {
     "USER": ["id_user", "username", "password", "nama", "role", "id_siswa", "nisn"],
     "SISWA": ["id_siswa", "nisn", "nik", "nama", "tempat_lahir", "tanggal_lahir", "jenis_kelamin", "kelas", "nama_wali", "no_hp", "alamat", "foto", "spp_nominal", "spp_kategori", "spp_catatan", "status_aktif", "spp_mulai_bulan", "spp_mulai_tahun"],
-    "TRANSAKSI": ["id_transaksi", "tanggal", "nisn", "nama_siswa", "kelas", "jenis", "kategori", "bulan", "nominal_tagihan", "nominal_bayar", "sisa", "status", "petugas", "keterangan", "alasan_batal", "waktu"],
-    "KEUANGAN": ["id_keuangan", "tanggal", "jenis", "kategori", "nominal", "keterangan", "bukti", "petugas", "status", "alasan_batal", "id_kategori", "waktu"],
-    "SETTING": ["nama_sekolah", "logo", "alamat", "no_wa", "kop_surat", "tahun_ajaran", "nama_kepsek", "nama_bendahara", "spp_default_nominal", "nama_bank", "no_rekening", "atas_nama_rekening", "qris_image", "spp_mulai_bulan", "spp_mulai_tahun"],
+    "TRANSAKSI": ["id_transaksi", "tanggal", "nisn", "nama_siswa", "kelas", "jenis", "kategori", "bulan", "nominal_tagihan", "nominal_bayar", "sisa", "status", "petugas", "keterangan", "alasan_batal", "waktu", "id_kuitansi_gabungan", "uang_diterima", "kembalian"],
+    "KEUANGAN": ["id_keuangan", "tanggal", "jenis", "kategori", "nominal", "keterangan", "bukti", "petugas", "status", "alasan_batal", "id_kategori", "waktu", "id_kuitansi_gabungan", "nama_pihak", "alamat_pihak"],
+    "SETTING": ["nama_sekolah", "logo", "alamat", "no_wa", "kop_surat", "tahun_ajaran", "nama_kepsek", "nama_bendahara", "spp_default_nominal", "nama_bank", "no_rekening", "atas_nama_rekening", "qris_image", "spp_mulai_bulan", "spp_mulai_tahun", "npsn", "akreditasi"],
     "PENGUMUMAN": ["id_pengumuman", "tanggal", "judul", "isi", "penulis", "is_penting", "status_aktif"],
     "KATEGORI_DANA": ["id_kategori", "nama_kategori", "keterangan", "status_aktif"],
     "LOG": ["tanggal", "user", "aktivitas"]
@@ -449,7 +449,13 @@ function fetchAllSheetsData() {
     kategori_dana: getSheetRows(ss, "KATEGORI_DANA"),
     settings: getSheetRows(ss, "SETTING")[0] || null,
     announcements: getSheetRows(ss, "PENGUMUMAN"),
-    logs: getSheetRows(ss, "LOG")
+    logs: (function() {
+      var allLogs = getSheetRows(ss, "LOG");
+      if (allLogs.length > 100) {
+        return allLogs.slice(allLogs.length - 100);
+      }
+      return allLogs;
+    })()
   };
 }
 
@@ -783,7 +789,10 @@ function handleProcessPayment(ss, trx) {
     trx.petugas || "Bendahara",
     trx.keterangan || "",
     "",
-    timeStr
+    timeStr,
+    trx.id_kuitansi_gabungan || "",
+    trx.uang_diterima !== undefined && trx.uang_diterima !== null ? Number(trx.uang_diterima) : "",
+    trx.kembalian !== undefined && trx.kembalian !== null ? Number(trx.kembalian) : ""
   ]);
 
   // Otomatis catat juga ke Sheet KEUANGAN sebagai kas masuk jika nominal_bayar > 0
@@ -804,7 +813,10 @@ function handleProcessPayment(ss, trx) {
         "ACTIVE",
         "",
         "KAT-SPP",
-        timeStr
+        timeStr,
+        trx.id_kuitansi_gabungan || "",
+        trx.nama_siswa || "",
+        ""
       ]);
     }
   }
@@ -939,7 +951,10 @@ function handleAddKeuangan(ss, k) {
     k.status || "ACTIVE",
     k.alasan_batal || "",
     k.id_kategori || "",
-    timeStr
+    timeStr,
+    k.id_kuitansi_gabungan || "",
+    k.nama_pihak || "",
+    k.alamat_pihak || ""
   ]);
 
   appendLog(ss, k.petugas || "Bendahara", "Input Kas " + k.jenis + " [" + k.kategori + "] Rp" + k.nominal + " - " + k.keterangan);
@@ -1021,7 +1036,7 @@ function handleUpdateSetting(ss, s) {
   }
   if (!sheet) return { status: "error", message: "Sheet SETTING tidak ditemukan" };
 
-  var headers = ["nama_sekolah", "logo", "alamat", "no_wa", "kop_surat", "tahun_ajaran", "nama_kepsek", "nama_bendahara", "spp_default_nominal", "nama_bank", "no_rekening", "atas_nama_rekening", "qris_image", "spp_mulai_bulan", "spp_mulai_tahun"];
+  var headers = ["nama_sekolah", "logo", "alamat", "no_wa", "kop_surat", "tahun_ajaran", "nama_kepsek", "nama_bendahara", "spp_default_nominal", "nama_bank", "no_rekening", "atas_nama_rekening", "qris_image", "spp_mulai_bulan", "spp_mulai_tahun", "npsn", "akreditasi"];
 
   var rowData = [
     s.nama_sekolah || "",
@@ -1038,7 +1053,9 @@ function handleUpdateSetting(ss, s) {
     s.atas_nama_rekening || "",
     s.qris_image || "",
     s.spp_mulai_bulan || "",
-    s.spp_mulai_tahun || ""
+    s.spp_mulai_tahun || "",
+    s.npsn !== undefined ? String(s.npsn) : "69987123",
+    s.akreditasi !== undefined ? String(s.akreditasi) : ""
   ];
 
   // Pastikan baris header 1 selalu lengkap dan sinkron

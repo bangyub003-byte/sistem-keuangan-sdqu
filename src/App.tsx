@@ -8,7 +8,8 @@ import {
   SyncStatus,
   UserRole,
   Announcement,
-  KategoriDana
+  KategoriDana,
+  ActivityLog
 } from './types';
 import { StorageService } from './services/storageService';
 import { checkFrontendBuildVersion } from './utils/versionCheck';
@@ -40,6 +41,7 @@ export default function App() {
   const [users, setUsers] = useState<UserAccount[]>(() => StorageService.getUsers());
   const [announcements, setAnnouncements] = useState<Announcement[]>(() => StorageService.getAnnouncements());
   const [kategoriDana, setKategoriDana] = useState<KategoriDana[]>(() => StorageService.getKategoriDana());
+  const [logs, setLogs] = useState<ActivityLog[]>(() => StorageService.getLogs());
 
   // Version tracking
   const [dataVersion, setDataVersion] = useState<string>(() => StorageService.getDataVersion());
@@ -128,6 +130,7 @@ export default function App() {
           });
         }
         if (res.announcements !== undefined) setAnnouncements(res.announcements);
+        if (res.logs !== undefined) setLogs(res.logs);
         if (res.version) setDataVersion(res.version);
         setSyncStatus('synced');
         setSyncError(null);
@@ -276,7 +279,9 @@ export default function App() {
       if (res.students) setStudents(res.students);
       if (res.transactions) setTransactions(res.transactions);
       if (res.keuangan) setKeuangan(res.keuangan);
+      if (res.kategori_dana) setKategoriDana(res.kategori_dana);
       if (res.setting) setSetting(res.setting);
+      if (res.logs) setLogs(res.logs);
       if (res.users) {
         setUsers(res.users);
         setCurrentUser(prevUser => {
@@ -310,6 +315,7 @@ export default function App() {
     const res = await StorageService.addStudent(newStudentData, currentUser?.nama || 'Bendahara');
     setStudents(StorageService.getStudents());
     setUsers(StorageService.getUsers());
+    setLogs(StorageService.getLogs());
     if (res.gasResult && res.gasResult.status === 'error') {
       setSyncStatus('error');
       setSyncError(res.gasResult.message);
@@ -324,6 +330,7 @@ export default function App() {
     setSyncError(null);
     const res = await StorageService.updateStudent(updatedStudent, currentUser?.nama || 'Bendahara');
     setStudents(StorageService.getStudents());
+    setLogs(StorageService.getLogs());
     if (res.gasResult && res.gasResult.status === 'error') {
       setSyncStatus('error');
       setSyncError(res.gasResult.message);
@@ -396,6 +403,8 @@ export default function App() {
       status: 'LUNAS' | 'KURANG';
       petugas: string;
       keterangan?: string;
+      uang_diterima?: number;
+      kembalian?: number;
     }>,
     customKuitansiId?: string
   ): Promise<{ transactions: Transaction[]; kuitansiId: string }> => {
@@ -404,6 +413,7 @@ export default function App() {
     const res = await StorageService.processPaymentBatch(items, customKuitansiId);
     setTransactions(StorageService.getTransactions());
     setKeuangan(StorageService.getKeuangan());
+    setLogs(StorageService.getLogs());
     if (res.gasResult && res.gasResult.status === 'error') {
       setSyncStatus('error');
       setSyncError(res.gasResult.message);
@@ -434,6 +444,7 @@ export default function App() {
     StorageService.processPayment(data).then(res => {
       setTransactions(StorageService.getTransactions());
       setKeuangan(StorageService.getKeuangan());
+      setLogs(StorageService.getLogs());
       if (res.gasResult && res.gasResult.status === 'error') {
         setSyncStatus('error');
         setSyncError(res.gasResult.message);
@@ -500,6 +511,7 @@ export default function App() {
     setSyncError(null);
     const res = await StorageService.cancelPayment(trxId, reason, currentUser?.nama || 'Bendahara');
     setTransactions(StorageService.getTransactions());
+    setLogs(StorageService.getLogs());
     if (res.gasResult && res.gasResult.status === 'error') {
       setSyncStatus('error');
       setSyncError(res.gasResult.message);
@@ -564,6 +576,7 @@ export default function App() {
     }));
     const res = await StorageService.addKeuanganBatch(recordsWithPetugas, sharedKuitansiId, petugasName);
     setKeuangan(StorageService.getKeuangan());
+    setLogs(StorageService.getLogs());
     if (res.gasResult && res.gasResult.status === 'error') {
       setSyncStatus('error');
       setSyncError(res.gasResult.message);
@@ -581,6 +594,7 @@ export default function App() {
     const operatorName = currentUser?.nama || 'Bendahara';
     const res = await StorageService.cancelKeuangan(id_keuangan, reason, operatorName);
     setKeuangan(StorageService.getKeuangan());
+    setLogs(StorageService.getLogs());
     if (res.gasResult && res.gasResult.status === 'error') {
       setSyncStatus('error');
       setSyncError(res.gasResult.message);
@@ -631,6 +645,7 @@ export default function App() {
     setSetting(StorageService.getSetting());
     setUsers(StorageService.getUsers());
     setAnnouncements(StorageService.getAnnouncements());
+    setLogs(StorageService.getLogs());
     setDataVersion('');
   };
 
@@ -722,8 +737,14 @@ export default function App() {
                     students={students}
                     transactions={transactions}
                     keuangan={keuangan}
+                    logs={logs}
                     setting={setting}
-                    onNavigateTab={setActiveBendaharaTab}
+                    onNavigateTo={(menu) => {
+                      const m = menu.toUpperCase();
+                      if (m === 'SANTRI' || m === 'PEMBAYARAN' || m === 'KEUANGAN' || m === 'LAPORAN' || m === 'PENGATURAN' || m === 'DASHBOARD') {
+                        setActiveBendaharaTab(m as any);
+                      }
+                    }}
                   />
                 )}
 

@@ -282,6 +282,36 @@ export const PengaturanMenu: React.FC<PengaturanMenuProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                NPSN (Nomor Pokok Sekolah Nasional)
+              </label>
+              <input
+                type="text"
+                value={formData.npsn ?? '69987123'}
+                onChange={(e) => setFormData({ ...formData, npsn: e.target.value })}
+                placeholder="69987123"
+                className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white font-mono font-medium"
+              />
+              <p className="text-[11px] text-slate-500 mt-1">Dicantumkan pada kop surat dokumen cetak resmi.</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                Akreditasi Lembaga
+              </label>
+              <input
+                type="text"
+                value={formData.akreditasi || ''}
+                onChange={(e) => setFormData({ ...formData, akreditasi: e.target.value })}
+                placeholder="Contoh: A atau B (Kosongkan jika tidak ditampilkan)"
+                className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white font-bold uppercase"
+              />
+              <p className="text-[11px] text-slate-500 mt-1">Jika dikosongkan, tulisan "| Terakreditasi ..." tidak akan dimunculkan di kop surat.</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
                 Nomor WhatsApp Sekolah
               </label>
               <input

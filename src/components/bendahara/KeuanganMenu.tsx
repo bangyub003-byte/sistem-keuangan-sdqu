@@ -58,6 +58,8 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
   const todayStr = new Date().toISOString().slice(0, 10);
   const [formTanggal, setFormTanggal] = useState(todayStr);
   const [formBukti, setFormBukti] = useState('');
+  const [formNamaPihak, setFormNamaPihak] = useState('');
+  const [formAlamatPihak, setFormAlamatPihak] = useState('');
 
   const createDefaultItem = (type: KeuanganType): KasItemRow => ({
     id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -138,6 +140,8 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
     setActiveTab(type);
     setFormTanggal(todayStr);
     setFormBukti('');
+    setFormNamaPihak('');
+    setFormAlamatPihak('');
     setKasItems([createDefaultItem(type)]);
     setIsModalOpen(true);
   };
@@ -219,7 +223,9 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
         bukti: formBukti,
         petugas: operatorName,
         status: 'ACTIVE' as const,
-        id_kuitansi_gabungan: sharedKuitansiId
+        id_kuitansi_gabungan: sharedKuitansiId,
+        nama_pihak: formNamaPihak.trim() || undefined,
+        alamat_pihak: formAlamatPihak.trim() || undefined
       };
     });
 
@@ -619,18 +625,46 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
 
             <form onSubmit={handleSave} className="flex flex-col flex-1 overflow-hidden min-h-0">
               <div className="p-6 space-y-4 overflow-y-auto flex-1">
-                {/* Tanggal Transaksi & Info Utama */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    Tanggal Transaksi
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={formTanggal}
-                    onChange={(e) => setFormTanggal(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
-                  />
+                {/* Tanggal Transaksi & Pihak Terkait (Nama & Alamat Opsional) */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                      Tanggal Transaksi
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={formTanggal}
+                      onChange={(e) => setFormTanggal(e.target.value)}
+                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                      {activeTab === 'MASUK' ? 'Nama Pembayar' : 'Dibayarkan Kepada'} <span className="text-slate-400 font-normal lowercase">(opsional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={formNamaPihak}
+                      onChange={(e) => setFormNamaPihak(e.target.value)}
+                      placeholder={activeTab === 'MASUK' ? 'Contoh: H. Rahmat / Donatur' : 'Contoh: Toko Buku Barokah / PLN'}
+                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                      Alamat <span className="text-slate-400 font-normal lowercase">(opsional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={formAlamatPihak}
+                      onChange={(e) => setFormAlamatPihak(e.target.value)}
+                      placeholder="Contoh: Playen, Wonosari"
+                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
+                    />
+                  </div>
                 </div>
 
                 {/* Daftar Item Transaksi Kas (Multi-Item) */}

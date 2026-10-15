@@ -601,6 +601,8 @@ export class StorageService {
       status: 'LUNAS' | 'KURANG';
       petugas: string;
       keterangan?: string;
+      uang_diterima?: number;
+      kembalian?: number;
     }>,
     customKuitansiId?: string
   ): Promise<{
@@ -640,7 +642,9 @@ export class StorageService {
         status: item.status,
         petugas: item.petugas,
         keterangan: item.keterangan,
-        id_kuitansi_gabungan: sharedKuitansiId
+        id_kuitansi_gabungan: sharedKuitansiId,
+        uang_diterima: item.uang_diterima,
+        kembalian: item.kembalian
       };
       newTransactions.push(newTrx);
 
@@ -655,7 +659,9 @@ export class StorageService {
           keterangan: `Pembayaran ${item.jenis} ${item.bulan || ''} a.n ${item.nama_siswa} (${item.kelas})`,
           petugas: item.petugas,
           status: 'ACTIVE',
-          id_kategori: item.kategori === 'SPP' ? 'KAT-SPP' : 'KAT-LAIN'
+          id_kategori: item.kategori === 'SPP' ? 'KAT-SPP' : 'KAT-LAIN',
+          id_kuitansi_gabungan: sharedKuitansiId,
+          nama_pihak: item.nama_siswa
         };
         newKeuanganList.push(newKeuangan);
       }
@@ -1191,6 +1197,7 @@ export class StorageService {
     setting?: SchoolSetting;
     users?: UserAccount[];
     announcements?: Announcement[];
+    logs?: ActivityLog[];
   }> {
     if (!gasUrl || !gasUrl.startsWith('http')) {
       return { success: false, message: 'URL Apps Script belum diisi di Pengaturan' };
@@ -1294,7 +1301,9 @@ export class StorageService {
           atas_nama_rekening: String(settingObj.atas_nama_rekening || settingObj.atas_nama || cur.atas_nama_rekening || ''),
           qris_image: formatDriveUrl(settingObj.qris_image || settingObj.qris || cur.qris_image || ''),
           spp_mulai_bulan: resolvedMonth,
-          spp_mulai_tahun: resolvedYear
+          spp_mulai_tahun: resolvedYear,
+          npsn: settingObj.npsn !== undefined ? String(settingObj.npsn) : (cur.npsn || '69987123'),
+          akreditasi: settingObj.akreditasi !== undefined ? String(settingObj.akreditasi) : (cur.akreditasi || '')
         };
         localStorage.setItem(STORAGE_KEYS.SETTING, JSON.stringify(parsedSetting));
       }
@@ -1354,7 +1363,9 @@ export class StorageService {
           petugas: String(t.petugas || 'Bendahara'),
           keterangan: t.keterangan ? String(t.keterangan) : undefined,
           alasan_batal: t.alasan_batal ? String(t.alasan_batal) : undefined,
-          id_kuitansi_gabungan: t.id_kuitansi_gabungan ? String(t.id_kuitansi_gabungan) : undefined
+          id_kuitansi_gabungan: t.id_kuitansi_gabungan ? String(t.id_kuitansi_gabungan) : undefined,
+          uang_diterima: (t.uang_diterima !== undefined && t.uang_diterima !== '') ? Number(t.uang_diterima) : undefined,
+          kembalian: (t.kembalian !== undefined && t.kembalian !== '') ? Number(t.kembalian) : undefined
         };
       }) : [];
 
@@ -1384,7 +1395,10 @@ export class StorageService {
           petugas: String(k.petugas || 'Bendahara'),
           status: ((k.status === 'CANCEL') ? 'CANCEL' : 'ACTIVE') as KeuanganStatus,
           alasan_batal: k.alasan_batal ? String(k.alasan_batal) : undefined,
-          id_kategori: k.id_kategori ? String(k.id_kategori) : undefined
+          id_kategori: k.id_kategori ? String(k.id_kategori) : undefined,
+          id_kuitansi_gabungan: k.id_kuitansi_gabungan ? String(k.id_kuitansi_gabungan) : undefined,
+          nama_pihak: k.nama_pihak ? String(k.nama_pihak) : undefined,
+          alamat_pihak: k.alamat_pihak ? String(k.alamat_pihak) : undefined
         };
       }) : [];
 
@@ -1427,6 +1441,18 @@ export class StorageService {
         status_aktif: a.status_aktif !== false && a.status_aktif !== 'false' && a.status_aktif !== 0
       })) : [];
 
+      // Parse Logs dari Spreadsheet (kolom tanggal, user, aktivitas) - Urutkan terbaru di atas
+      const parsedLogs: ActivityLog[] = Array.isArray(data.logs) ? data.logs
+        .filter((l: any) => l.aktivitas || l.user)
+        .map((l: any, idx: number) => ({
+          id_log: String(l.id_log || `LOG-${Date.now()}-${idx}`),
+          tanggal: String(l.tanggal || ''),
+          user: String(l.user || 'Sistem'),
+          aktivitas: String(l.aktivitas || '')
+        }))
+        .reverse()
+        : [];
+
       // Update penyimpanan lokal (selalu perbarui jika sheet ada dalam respon sinkronisasi, termasuk saat baris dihapus menjadi 0)
       if (Array.isArray(data.students)) this.saveStudents(parsedStudents);
       if (Array.isArray(data.transactions)) this.saveTransactions(parsedTransactions);
@@ -1434,6 +1460,7 @@ export class StorageService {
       if (Array.isArray(data.kategori_dana)) this.saveKategoriDana(parsedKategoriDana);
       if (Array.isArray(data.users)) this.saveUsers(parsedUsers);
       if (Array.isArray(data.announcements)) this.saveAnnouncements(parsedAnnouncements);
+      if (Array.isArray(data.logs)) this.saveLogs(parsedLogs);
 
       return {
         success: true,
@@ -1445,7 +1472,8 @@ export class StorageService {
         kategori_dana: Array.isArray(data.kategori_dana) ? parsedKategoriDana : undefined,
         setting: parsedSetting,
         users: Array.isArray(data.users) ? parsedUsers : undefined,
-        announcements: Array.isArray(data.announcements) ? parsedAnnouncements : undefined
+        announcements: Array.isArray(data.announcements) ? parsedAnnouncements : undefined,
+        logs: Array.isArray(data.logs) ? parsedLogs : undefined
       };
     } catch (err: any) {
       return { success: false, message: `Gagal membaca Google Spreadsheet: ${err.message}` };

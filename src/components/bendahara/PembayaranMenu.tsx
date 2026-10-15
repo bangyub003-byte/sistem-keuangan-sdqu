@@ -45,6 +45,8 @@ interface PembayaranMenuProps {
     status: 'LUNAS' | 'KURANG';
     petugas: string;
     keterangan?: string;
+    uang_diterima?: number;
+    kembalian?: number;
   }>, customKuitansiId?: string) => Promise<{ transactions: Transaction[]; kuitansiId: string }>;
   onCancelPayment: (trxId: string, reason: string) => void;
   onOpenReceipt: (trx: Transaction) => void;
@@ -93,6 +95,18 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
   const [customPaymentTypes, setCustomPaymentTypes] = useState<string[]>([]);
   const [keterangan, setKeterangan] = useState('');
 
+  // Bantuan Alokasi SPP Otomatis (Requirement 5b, 5c, 5d)
+  const [totalUangDiterimaInput, setTotalUangDiterimaInput] = useState<string>('');
+  const [isAllocationUsed, setIsAllocationUsed] = useState<boolean>(false);
+  const [allocationInfo, setAllocationInfo] = useState<{
+    paidMonths: string[];
+    totalPaid: number;
+    remaining: number;
+    nextMonth?: string;
+  } | null>(null);
+  const [sisaOption, setSisaOption] = useState<'KEMBALIAN' | 'BAYAR_SEBAGIAN' | 'ITEM_LAIN'>('KEMBALIAN');
+  const [customItemLainName, setCustomItemLainName] = useState<string>('Infaq');
+
   // Cancel Transaction Modal
   const [cancelModalTrx, setCancelModalTrx] = useState<Transaction | null>(null);
   const [cancelReason, setCancelReason] = useState('');
@@ -135,14 +149,26 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
   };
 
   const handleAddItem = () => {
+    const sppFee = getStudentDefaultSpp(selectedStudent);
+    // Cari bulan pertama yang belum lunas dan belum dipilih di baris manapun
+    const availableMonth = monthsList.find(m => {
+      const isLunas = checkMonthIsLunas(m);
+      const isChosen = paymentItems.some(it => {
+        const isSpp = (!it.isManualPayment && (it.paymentType.startsWith('SPP') || it.paymentType === 'SPP Bulanan')) ||
+          (it.isManualPayment && it.manualPaymentInput.toLowerCase().includes('spp'));
+        return isSpp && it.selectedMonth === m;
+      });
+      return !isLunas && !isChosen;
+    });
+
     const newItem: PaymentItemRow = {
       id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      paymentType: 'Uang Gedung / Infaq Pangkal',
+      paymentType: availableMonth ? 'SPP Bulanan' : 'Uang Gedung / Infaq Pangkal',
       isManualPayment: false,
       manualPaymentInput: '',
-      selectedMonth: '',
-      customTagihan: 0,
-      nominalBayar: 0
+      selectedMonth: availableMonth || '',
+      customTagihan: availableMonth ? sppFee : 0,
+      nominalBayar: availableMonth ? sppFee : 0
     };
     setPaymentItems(prev => [...prev, newItem]);
   };
@@ -221,6 +247,9 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
     const now = new Date();
     const sharedKuitansiId = `KWT-${now.getFullYear()}-${Date.now().toString().slice(-6)}`;
 
+    const finalUangDiterima = isAllocationUsed && totalUangDiterimaInput ? Number(totalUangDiterimaInput) : undefined;
+    const finalKembalian = isAllocationUsed && sisaOption === 'KEMBALIAN' ? (allocationInfo?.remaining || 0) : undefined;
+
     // Siapkan entri transaksi terpisah di TRANSAKSI sheet untuk setiap baris (Prioritas 1 & 2)
     const itemsToSave = paymentItems.map((it, idx) => {
       const finalType = it.isManualPayment ? it.manualPaymentInput.trim() : it.paymentType;
@@ -249,7 +278,9 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
         status: itemStatus,
         petugas: operatorName,
         keterangan: finalKeterangan,
-        id_kuitansi_gabungan: sharedKuitansiId
+        id_kuitansi_gabungan: sharedKuitansiId,
+        uang_diterima: finalUangDiterima,
+        kembalian: finalKembalian
       };
     });
 
@@ -267,9 +298,12 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
       onOpenReceipt(firstTrx);
     }
 
-    // Reset formulir kembali ke 1 item standar
+    // Reset formulir kembali ke 1 item standar & reset alokasi
     setPaymentItems([createDefaultItem(selectedStudent)]);
     setKeterangan('');
+    setIsAllocationUsed(false);
+    setAllocationInfo(null);
+    setTotalUangDiterimaInput('');
   };
 
   const handleConfirmCancel = () => {
@@ -384,9 +418,133 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
     return found ? found.status === 'LUNAS' : false;
   };
 
+  // Deteksi nama kembar / sama (Requirement 4b)
+  const normalizeName = (name: string) => name.toLowerCase().replace(/\s+/g, ' ').trim();
+  const nameCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    students.filter(s => s.status_aktif).forEach(s => {
+      const norm = normalizeName(s.nama);
+      if (norm) {
+        counts[norm] = (counts[norm] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [students]);
+
+  const isSelectedStudentTwin = useMemo(() => {
+    if (!selectedStudent) return false;
+    return (nameCounts[normalizeName(selectedStudent.nama)] || 0) > 1;
+  }, [selectedStudent, nameCounts]);
+
+  // Handler Alokasi Otomatis (Requirement 5b & 5c)
+  const handleAutoAllocate = () => {
+    if (!selectedStudent) {
+      alert('Pilih murid terlebih dahulu.');
+      return;
+    }
+    const totalDiterima = Number(totalUangDiterimaInput) || 0;
+    if (totalDiterima <= 0) {
+      alert('Masukkan Total Uang Diterima (Rp) terlebih dahulu.');
+      return;
+    }
+
+    const sppFee = getStudentDefaultSpp(selectedStudent);
+    if (sppFee <= 0) {
+      alert('Tarif SPP murid belum ditentukan.');
+      return;
+    }
+
+    const unpaidMonths = monthsList.filter(m => !checkMonthIsLunas(m));
+    if (unpaidMonths.length === 0) {
+      alert(`Alhamdulillah, seluruh bulan SPP tahun ajaran ini sudah lunas untuk ananda ${selectedStudent.nama}.`);
+      return;
+    }
+
+    const countFullMonths = Math.floor(totalDiterima / sppFee);
+    const monthsToCoverCount = Math.min(countFullMonths, unpaidMonths.length);
+    const monthsToCover = unpaidMonths.slice(0, monthsToCoverCount);
+    const totalSppPaid = monthsToCover.length * sppFee;
+    const remainingMoney = totalDiterima - totalSppPaid;
+    const nextUnpaidMonth = unpaidMonths[monthsToCoverCount] || undefined;
+
+    setAllocationInfo({
+      paidMonths: monthsToCover,
+      totalPaid: totalSppPaid,
+      remaining: remainingMoney,
+      nextMonth: nextUnpaidMonth
+    });
+    setIsAllocationUsed(true);
+    setSisaOption('KEMBALIAN');
+
+    const newItems: PaymentItemRow[] = monthsToCover.map((m, idx) => ({
+      id: `item-spp-${Date.now()}-${idx}`,
+      paymentType: 'SPP Bulanan',
+      isManualPayment: false,
+      manualPaymentInput: '',
+      selectedMonth: m,
+      customTagihan: sppFee,
+      nominalBayar: sppFee
+    }));
+
+    if (newItems.length === 0 && unpaidMonths.length > 0) {
+      newItems.push({
+        id: `item-spp-${Date.now()}-0`,
+        paymentType: 'SPP Bulanan',
+        isManualPayment: false,
+        manualPaymentInput: '',
+        selectedMonth: unpaidMonths[0],
+        customTagihan: sppFee,
+        nominalBayar: Math.min(totalDiterima, sppFee)
+      });
+    }
+
+    setPaymentItems(newItems.length > 0 ? newItems : [createDefaultItem(selectedStudent)]);
+  };
+
+  const handleSelectSisaOption = (opt: 'KEMBALIAN' | 'BAYAR_SEBAGIAN' | 'ITEM_LAIN', itemLainName?: string) => {
+    setSisaOption(opt);
+    if (!allocationInfo) return;
+
+    const sppFee = getStudentDefaultSpp(selectedStudent);
+    const baseItems: PaymentItemRow[] = allocationInfo.paidMonths.map((m, idx) => ({
+      id: `item-spp-${Date.now()}-${idx}`,
+      paymentType: 'SPP Bulanan',
+      isManualPayment: false,
+      manualPaymentInput: '',
+      selectedMonth: m,
+      customTagihan: sppFee,
+      nominalBayar: sppFee
+    }));
+
+    if (opt === 'BAYAR_SEBAGIAN' && allocationInfo.remaining > 0 && allocationInfo.nextMonth) {
+      baseItems.push({
+        id: `item-next-${Date.now()}`,
+        paymentType: 'SPP Bulanan',
+        isManualPayment: false,
+        manualPaymentInput: '',
+        selectedMonth: allocationInfo.nextMonth,
+        customTagihan: sppFee,
+        nominalBayar: allocationInfo.remaining
+      });
+    } else if (opt === 'ITEM_LAIN' && allocationInfo.remaining > 0) {
+      const jenisLain = (itemLainName || customItemLainName || 'Infaq').trim();
+      baseItems.push({
+        id: `item-other-${Date.now()}`,
+        paymentType: jenisLain,
+        isManualPayment: true,
+        manualPaymentInput: jenisLain,
+        selectedMonth: '',
+        customTagihan: allocationInfo.remaining,
+        nominalBayar: allocationInfo.remaining
+      });
+    }
+
+    setPaymentItems(baseItems.length > 0 ? baseItems : [createDefaultItem(selectedStudent)]);
+  };
+
   // Otomatis arahkan bulan item SPP pertama ke bulan yang belum lunas jika belum terisi
   useEffect(() => {
-    if (monthsList.length === 0) return;
+    if (monthsList.length === 0 || isAllocationUsed) return;
     const firstUnpaid = monthsList.find(m => !checkMonthIsLunas(m)) || monthsList[0];
     if (!firstUnpaid) return;
 
@@ -404,7 +562,7 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
       });
       return modified ? next : prev;
     });
-  }, [selectedStudent?.nisn, transactions, monthsList, studentSppSummary]);
+  }, [selectedStudent?.nisn, transactions, monthsList, studentSppSummary, isAllocationUsed]);
 
   const paymentTypeOptions = [
     'SPP Bulanan',
@@ -471,8 +629,17 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
                     }`}
                   >
                     <div>
-                      <div className="font-bold text-slate-900 text-xs">{s.nama}</div>
-                      <div className="text-[10px] text-slate-500 font-mono">NISN: {s.nisn} &bull; {s.kelas}</div>
+                      <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5 flex-wrap">
+                        <span>{s.nama}</span>
+                        {(nameCounts[normalizeName(s.nama)] || 0) > 1 && (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                            Nama kembar
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-mono">
+                        NISN: {s.nisn || '-'} {s.tanggal_lahir ? `• ${s.tanggal_lahir}` : ''} &bull; {s.kelas}
+                      </div>
                     </div>
                     {isSelected && (
                       <Check className="w-4 h-4 text-emerald-700 shrink-0" />
@@ -497,6 +664,16 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
                   <p className="text-xs text-slate-500 font-mono">NISN: {selectedStudent.nisn} &bull; Kelas {selectedStudent.kelas}</p>
                 </div>
               </div>
+
+              {/* Peringatan jika nama kembar (Requirement 4b) */}
+              {isSelectedStudentTwin && (
+                <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-start gap-2 shadow-2xs">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <span className="font-medium leading-snug">
+                    Ada murid bernama sama - periksa tanggal lahir/NISN sebelum menyimpan
+                  </span>
+                </div>
+              )}
 
               {/* Data Detail Roster */}
               <div className="bg-slate-50 rounded-lg p-3 text-xs space-y-2 border border-slate-200">
@@ -558,6 +735,119 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
             </div>
 
             <form onSubmit={handleSubmitPayment} className="space-y-4">
+              {/* Bantuan Alokasi SPP Otomatis Ringkas (Requirement 5b, 5c, 5g) */}
+              <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] font-bold text-emerald-950 whitespace-nowrap">
+                      Alokasi Multi-Bulan SPP:
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={totalUangDiterimaInput}
+                      onChange={(e) => setTotalUangDiterimaInput(e.target.value)}
+                      placeholder="Total Uang Diterima (Rp)..."
+                      className="w-44 sm:w-52 px-2.5 py-1 text-xs font-mono font-bold bg-white border border-emerald-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:outline-hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAutoAllocate}
+                      className="px-3 py-1 bg-emerald-800 hover:bg-emerald-900 active:scale-95 text-white text-xs font-bold rounded-lg shadow-2xs transition-all cursor-pointer whitespace-nowrap"
+                    >
+                      Alokasikan Otomatis
+                    </button>
+                  </div>
+                  {isAllocationUsed && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAllocationUsed(false);
+                        setAllocationInfo(null);
+                        setTotalUangDiterimaInput('');
+                        setPaymentItems([createDefaultItem(selectedStudent)]);
+                      }}
+                      className="text-[10px] text-slate-500 hover:text-rose-700 underline cursor-pointer self-end sm:self-center"
+                    >
+                      Reset Alokasi
+                    </button>
+                  )}
+                </div>
+
+                {/* Ringkasan satu baris & 3 Opsi Sisa Uang (Requirement 5c) */}
+                {isAllocationUsed && allocationInfo && (
+                  <div className="pt-2 border-t border-emerald-200/80 text-xs space-y-1.5">
+                    <div className="text-emerald-900 font-medium">
+                      <strong>Ringkasan:</strong> Terbayar {allocationInfo.paidMonths.length} bulan ({allocationInfo.paidMonths.map(m => m.split(' ')[0]).join(', ') || '-'}) = {formatRupiah(allocationInfo.totalPaid)}. Sisa uang: <span className="font-bold text-emerald-950 font-mono">{formatRupiah(allocationInfo.remaining)}</span>
+                    </div>
+
+                    {allocationInfo.remaining > 0 && (
+                      <div className="flex items-center gap-3 flex-wrap text-[11px] pt-0.5">
+                        <span className="text-slate-600 font-bold">Pilihan Sisa Uang:</span>
+                        <label className="inline-flex items-center gap-1 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="sisaOption"
+                            value="KEMBALIAN"
+                            checked={sisaOption === 'KEMBALIAN'}
+                            onChange={() => handleSelectSisaOption('KEMBALIAN')}
+                            className="text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span className={sisaOption === 'KEMBALIAN' ? 'font-bold text-emerald-900' : 'text-slate-700'}>
+                            Kembalian (tidak dicatat)
+                          </span>
+                        </label>
+
+                        {allocationInfo.nextMonth && (
+                          <label className="inline-flex items-center gap-1 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="sisaOption"
+                              value="BAYAR_SEBAGIAN"
+                              checked={sisaOption === 'BAYAR_SEBAGIAN'}
+                              onChange={() => handleSelectSisaOption('BAYAR_SEBAGIAN')}
+                              className="text-emerald-600 focus:ring-emerald-500"
+                            />
+                            <span className={sisaOption === 'BAYAR_SEBAGIAN' ? 'font-bold text-emerald-900' : 'text-slate-700'}>
+                              Bayar sebagian {allocationInfo.nextMonth.split(' ')[0]} (Kurang)
+                            </span>
+                          </label>
+                        )}
+
+                        <label className="inline-flex items-center gap-1 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="sisaOption"
+                            value="ITEM_LAIN"
+                            checked={sisaOption === 'ITEM_LAIN'}
+                            onChange={() => handleSelectSisaOption('ITEM_LAIN')}
+                            className="text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span className={sisaOption === 'ITEM_LAIN' ? 'font-bold text-emerald-900' : 'text-slate-700'}>
+                            Alokasikan ke item lain
+                          </span>
+                        </label>
+
+                        {sisaOption === 'ITEM_LAIN' && (
+                          <div className="inline-flex items-center gap-1 ml-1">
+                            <input
+                              type="text"
+                              value={customItemLainName}
+                              onChange={(e) => {
+                                setCustomItemLainName(e.target.value);
+                                handleSelectSisaOption('ITEM_LAIN', e.target.value);
+                              }}
+                              placeholder="Nama item (cth: Infaq)"
+                              className="px-2 py-0.5 text-xs bg-white border border-emerald-400 rounded focus:ring-1 focus:ring-emerald-600 w-28"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Daftar Item Pembayaran (Multi-Item Dalam Satu Kuitansi - Prioritas 2) */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -673,9 +963,13 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
 
                                 const isNowSpp = type.startsWith('SPP') || type === 'SPP Bulanan';
                                 const fee = isNowSpp ? (selectedStudent?.spp_nominal || 85000) : 0;
+                                const nextAvailMonth = isNowSpp
+                                  ? (monthsList.find(m => !checkMonthIsLunas(m) && !paymentItems.some(it => it.id !== item.id && it.selectedMonth === m)) || monthsList[0])
+                                  : '';
                                 handleUpdateItem(item.id, {
                                   paymentType: type,
                                   isManualPayment: false,
+                                  selectedMonth: nextAvailMonth,
                                   customTagihan: fee,
                                   nominalBayar: fee
                                 });
@@ -714,14 +1008,23 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
                             >
                               {monthsList.map(m => {
                                 const isLunas = checkMonthIsLunas(m);
+                                const isChosenElsewhere = paymentItems.some(
+                                  other => other.id !== item.id &&
+                                  ((!other.isManualPayment && (other.paymentType.startsWith('SPP') || other.paymentType === 'SPP Bulanan')) ||
+                                   (other.isManualPayment && other.manualPaymentInput.toLowerCase().includes('spp'))) &&
+                                  other.selectedMonth === m
+                                );
+                                const isDisabled = isLunas || isChosenElsewhere;
+                                const labelSuffix = isLunas ? '(Sudah Lunas)' : isChosenElsewhere ? '(Sudah Dipilih)' : '';
+
                                 return (
                                   <option
                                     key={m}
                                     value={m}
-                                    disabled={isLunas}
-                                    className={isLunas ? 'text-slate-400 bg-slate-100 italic' : 'text-slate-900 font-medium'}
+                                    disabled={isDisabled}
+                                    className={isDisabled ? 'text-slate-400 bg-slate-100 italic' : 'text-slate-900 font-medium'}
                                   >
-                                    {m} {isLunas ? '(Sudah Lunas)' : ''}
+                                    {m} {labelSuffix}
                                   </option>
                                 );
                               })}

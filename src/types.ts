@@ -55,6 +55,8 @@ export interface Transaction {
   keterangan?: string;
   alasan_batal?: string;
   id_kuitansi_gabungan?: string;
+  uang_diterima?: number;
+  kembalian?: number;
 }
 
 export type KeuanganType = 'MASUK' | 'KELUAR';
@@ -81,6 +83,8 @@ export interface KeuanganRecord {
   alasan_batal?: string;
   id_kategori?: string;
   id_kuitansi_gabungan?: string; // Shared receipt grouping ID for multi-item cash records
+  nama_pihak?: string; // Nama Pembayar (Masuk) / Dibayarkan Kepada (Keluar)
+  alamat_pihak?: string; // Alamat pihak terkait
 }
 
 export interface SchoolSetting {
@@ -89,6 +93,8 @@ export interface SchoolSetting {
   alamat: string;
   no_wa: string;
   kop_surat: string;
+  npsn?: string;
+  akreditasi?: string;
   tahun_ajaran: string;
   nama_kepsek: string;
   nama_bendahara: string;
