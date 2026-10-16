@@ -3,7 +3,7 @@ import { Student, Transaction, SchoolSetting } from '../../types';
 import { StorageService } from '../../services/storageService';
 import { Search, CreditCard, Printer, CheckCircle, AlertCircle, XCircle, User, Calendar, Award, RotateCcw, FileText, Check, ShieldAlert, Plus, PenTool, MessageCircle, Phone, Trash2 } from 'lucide-react';
 import { createPaymentConfirmationWaUrl, createTunggakanReminderWaUrl } from '../../utils/whatsappHelper';
-import { calculateStudentSppStatus, getStandardTransactionTitle, getAcademicYearMonths, formatTransactionTimestamp } from '../../utils/sppLogic';
+import { calculateStudentSppStatus, getStandardTransactionTitle, getAcademicYearMonths, formatTransactionTimestamp, formatTanggalLahir } from '../../utils/sppLogic';
 
 export interface PaymentItemRow {
   id: string;
@@ -638,7 +638,7 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
                         )}
                       </div>
                       <div className="text-[10px] text-slate-500 font-mono">
-                        NISN: {s.nisn || '-'} {s.tanggal_lahir ? `• ${s.tanggal_lahir}` : ''} &bull; {s.kelas}
+                        NISN: {s.nisn || '-'} {s.tanggal_lahir && formatTanggalLahir(s.tanggal_lahir) !== '-' ? `• ${formatTanggalLahir(s.tanggal_lahir)}` : ''} &bull; {s.kelas}
                       </div>
                     </div>
                     {isSelected && (
@@ -670,7 +670,7 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
                 <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-start gap-2 shadow-2xs">
                   <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                   <span className="font-medium leading-snug">
-                    Ada murid bernama sama - periksa tanggal lahir/NISN sebelum menyimpan
+                    Ada murid bernama sama - periksa tanggal lahir ({formatTanggalLahir(selectedStudent.tanggal_lahir)})/NISN ({selectedStudent.nisn}) sebelum menyimpan
                   </span>
                 </div>
               )}
@@ -681,6 +681,12 @@ export const PembayaranMenu: React.FC<PembayaranMenuProps> = ({
                   <span className="text-slate-500">Tingkat / Kelas:</span>
                   <span className="font-bold text-slate-800">{selectedStudent.kelas}</span>
                 </div>
+                {selectedStudent.tanggal_lahir && formatTanggalLahir(selectedStudent.tanggal_lahir) !== '-' && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Tanggal Lahir:</span>
+                    <span className="font-bold text-slate-800">{formatTanggalLahir(selectedStudent.tanggal_lahir)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-slate-500">Nama Wali:</span>
                   <span className="font-bold text-slate-800">{selectedStudent.nama_wali}</span>

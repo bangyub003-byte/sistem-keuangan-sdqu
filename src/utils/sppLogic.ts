@@ -767,3 +767,74 @@ export function terbilangRupiah(n: number): string {
   const hasil = terbilang(n).trim().replace(/\s+/g, ' ');
   return `${hasil} Rupiah`;
 }
+
+/**
+ * Format tanggal lahir murid ke format tanggal resmi Indonesia tanpa jam (contoh: "22 April 2019").
+ * Murni parsing string tahun-bulan-hari tanpa objek Date agar tidak bergeser satu hari karena zona waktu.
+ * Jika nilainya kosong atau tidak valid, menghasilkan "-".
+ */
+export function formatTanggalLahir(val?: string | null): string {
+  if (!val || typeof val !== 'string') return '-';
+  const trimmed = val.trim();
+  if (
+    !trimmed ||
+    trimmed === '-' ||
+    trimmed.toLowerCase() === 'null' ||
+    trimmed.toLowerCase() === 'undefined'
+  ) {
+    return '-';
+  }
+
+  // Pisahkan bagian tanggal dari jam (spasi atau T), misal: "2019-04-22 00:00:00" -> "2019-04-22"
+  const dateOnly = trimmed.split(/[T\s]/)[0];
+
+  // 1. Format standar YYYY-MM-DD atau YYYY/MM/DD
+  const ymdMatch = dateOnly.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (ymdMatch) {
+    const year = parseInt(ymdMatch[1], 10);
+    const month = parseInt(ymdMatch[2], 10);
+    const day = parseInt(ymdMatch[3], 10);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31 && year >= 1900 && year <= 2100) {
+      return `${day} ${INDONESIAN_MONTHS[month - 1]} ${year}`;
+    }
+  }
+
+  // 2. Format alternatif DD-MM-YYYY atau DD/MM/YYYY
+  const dmyMatch = dateOnly.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (dmyMatch) {
+    const day = parseInt(dmyMatch[1], 10);
+    const month = parseInt(dmyMatch[2], 10);
+    const year = parseInt(dmyMatch[3], 10);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31 && year >= 1900 && year <= 2100) {
+      return `${day} ${INDONESIAN_MONTHS[month - 1]} ${year}`;
+    }
+  }
+
+  // 3. Jika sudah berbentuk teks nama bulan bahasa Indonesia dengan jam di belakangnya (e.g. "22 April 2019 00:00:00")
+  const strippedTime = trimmed.replace(/\s+\d{1,2}:\d{2}(:\d{2})?.*$/, '').trim();
+  const hasIndoMonth = INDONESIAN_MONTHS.some(m => strippedTime.toLowerCase().includes(m.toLowerCase()));
+  if (hasIndoMonth) {
+    return strippedTime;
+  }
+
+  return '-';
+}
+
+/**
+ * Pembersih string tanggal untuk nilai atribut HTML <input type="date" value={...} /> (YYYY-MM-DD).
+ */
+export function cleanTanggalLahirInput(val?: string | null): string {
+  if (!val || typeof val !== 'string') return '';
+  const trimmed = val.trim();
+  if (!trimmed || trimmed === '-' || trimmed.toLowerCase() === 'null') return '';
+  const dateOnly = trimmed.split(/[T\s]/)[0];
+  const ymdMatch = dateOnly.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (ymdMatch) {
+    const y = ymdMatch[1];
+    const m = ymdMatch[2].padStart(2, '0');
+    const d = ymdMatch[3].padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return dateOnly;
+}
+

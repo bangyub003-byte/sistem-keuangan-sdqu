@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Student, Transaction, SchoolSetting } from '../../types';
-import { calculateStudentSppStatus, getStandardTransactionTitle, formatTransactionTimestamp, isHistoricalArrearsTrx } from '../../utils/sppLogic';
+import { calculateStudentSppStatus, getStandardTransactionTitle, formatTransactionTimestamp, isHistoricalArrearsTrx, formatTanggalLahir, cleanTanggalLahirInput } from '../../utils/sppLogic';
 import { createPaymentConfirmationWaUrl, createTunggakanReminderWaUrl } from '../../utils/whatsappHelper';
 import { StorageService } from '../../services/storageService';
 import { 
@@ -76,7 +76,10 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
   const [activeTab, setActiveTab] = useState<'REKAP' | 'TRANSAKSI' | 'EDIT_SPP' | 'EDIT_IDENTITAS'>('REKAP');
   
   // Edit Identitas Form State
-  const [identitasForm, setIdentitasForm] = useState<Student>({ ...student });
+  const [identitasForm, setIdentitasForm] = useState<Student>({
+    ...student,
+    tanggal_lahir: cleanTanggalLahirInput(student.tanggal_lahir)
+  });
   const [identitasSaved, setIdentitasSaved] = useState(false);
 
   // Edit SPP Form State
@@ -308,6 +311,12 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
                 <span>NISN: {student.nisn}</span>
                 <span>•</span>
                 <span>Kelas: {student.kelas}</span>
+                {student.tanggal_lahir && formatTanggalLahir(student.tanggal_lahir) !== '-' && (
+                  <>
+                    <span>•</span>
+                    <span>Lahir: {formatTanggalLahir(student.tanggal_lahir)}</span>
+                  </>
+                )}
                 {student.no_hp && (
                   <>
                     <span>•</span>
@@ -1118,7 +1127,7 @@ export const SantriDetailModal: React.FC<SantriDetailModalProps> = ({
                   </label>
                   <input
                     type="date"
-                    value={identitasForm.tanggal_lahir || ''}
+                    value={cleanTanggalLahirInput(identitasForm.tanggal_lahir)}
                     onChange={(e) => setIdentitasForm({ ...identitasForm, tanggal_lahir: e.target.value })}
                     className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
                   />

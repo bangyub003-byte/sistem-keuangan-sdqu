@@ -8,7 +8,8 @@ import {
   getStandardTransactionTitle,
   formatTransactionTimestamp,
   formatBulanDibayar,
-  cleanTransactionTime
+  cleanTransactionTime,
+  formatTanggalLahir
 } from '../utils/sppLogic';
 import { createTunggakanReminderWaUrl } from '../utils/whatsappHelper';
 import { Printer, X, FileText, AlertCircle } from 'lucide-react';
@@ -90,29 +91,50 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
         t => t.id_kuitansi_gabungan === transaction.id_kuitansi_gabungan && t.status !== 'CANCEL'
       );
       if (grouped.length > 0) {
-        if (!grouped.some(g => g.id_transaksi === transaction.id_transaksi)) {
-          return [transaction, ...grouped];
+        // Hilangkan duplikat berdasarkan id_transaksi unik
+        const uniqueMap = new Map<string, Transaction>();
+        for (const item of grouped) {
+          const key = item.id_transaksi || `${item.bulan}-${item.nominal_bayar}`;
+          if (!uniqueMap.has(key)) {
+            uniqueMap.set(key, item);
+          }
         }
-        return grouped;
+        return Array.from(uniqueMap.values());
       }
     }
     return [transaction];
   }, [transaction, safeTransactions]);
 
-  // Multi-item kas record grouping for id_kuitansi_gabungan
+  // Multi-item kas record grouping for id_kuitansi_gabungan (SATU sumber data dari safeKeuangan)
   const kasReceiptItems = useMemo(() => {
     if (!kasRecord) return [];
+
+    // Kumpulkan item kuitansi berdasarkan id_kuitansi_gabungan dari data keuangan yang tersimpan
     if (kasRecord.id_kuitansi_gabungan) {
       const grouped = safeKeuangan.filter(
         k => k.id_kuitansi_gabungan === kasRecord.id_kuitansi_gabungan && k.status !== 'CANCEL'
       );
       if (grouped.length > 0) {
-        if (!grouped.some(g => g.id_keuangan === kasRecord.id_keuangan)) {
-          return [kasRecord, ...grouped];
+        // Hilangkan duplikat berdasarkan id_keuangan unik
+        const uniqueMap = new Map<string, KeuanganRecord>();
+        for (const item of grouped) {
+          const key = item.id_keuangan || `${item.kategori}-${item.nominal}-${item.keterangan}`;
+          if (!uniqueMap.has(key)) {
+            uniqueMap.set(key, item);
+          }
         }
-        return grouped;
+        return Array.from(uniqueMap.values());
       }
     }
+
+    // Jika tidak ada id_kuitansi_gabungan, periksa id_keuangan di safeKeuangan
+    if (kasRecord.id_keuangan) {
+      const storedItem = safeKeuangan.find(k => k.id_keuangan === kasRecord.id_keuangan && k.status !== 'CANCEL');
+      if (storedItem) {
+        return [storedItem];
+      }
+    }
+
     return [kasRecord];
   }, [kasRecord, safeKeuangan]);
 
@@ -323,10 +345,10 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                           </td>
                         </tr>
                       )}
-                      {currentReceiptStudent?.tanggal_lahir && (
+                      {currentReceiptStudent?.tanggal_lahir && formatTanggalLahir(currentReceiptStudent.tanggal_lahir) !== '-' && (
                         <tr>
                           <td className="py-1 text-slate-500">Tanggal Lahir</td>
-                          <td className="py-1">: {currentReceiptStudent.tanggal_lahir}</td>
+                          <td className="py-1">: {formatTanggalLahir(currentReceiptStudent.tanggal_lahir)}</td>
                         </tr>
                       )}
                       <tr>

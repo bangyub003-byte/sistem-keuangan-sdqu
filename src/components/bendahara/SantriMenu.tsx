@@ -5,6 +5,7 @@ import { SantriDetailModal } from './SantriDetailModal';
 import { CatatTunggakanManualModal } from './CatatTunggakanManualModal';
 import { INITIAL_SETTING } from '../../data/initialData';
 import { StorageService } from '../../services/storageService';
+import { formatTanggalLahir, cleanTanggalLahirInput } from '../../utils/sppLogic';
 
 interface SantriMenuProps {
   students: Student[];
@@ -141,7 +142,7 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
       nik: student.nik,
       nama: student.nama,
       tempat_lahir: student.tempat_lahir,
-      tanggal_lahir: student.tanggal_lahir,
+      tanggal_lahir: cleanTanggalLahirInput(student.tanggal_lahir),
       jenis_kelamin: student.jenis_kelamin,
       kelas: student.kelas,
       nama_wali: student.nama_wali,
@@ -406,7 +407,7 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
                       </div>
                     </td>
                     <td className="p-3 text-slate-700">{s.tempat_lahir}</td>
-                    <td className="p-3 text-slate-600 whitespace-nowrap">{s.tanggal_lahir}</td>
+                    <td className="p-3 text-slate-600 whitespace-nowrap">{formatTanggalLahir(s.tanggal_lahir)}</td>
                     <td className="p-3 text-center">
                       <span className={`inline-block px-1.5 py-0.5 rounded font-bold text-[10px] ${
                         s.jenis_kelamin === 'L' ? 'bg-blue-100 text-blue-800' : 'bg-pink-100 text-pink-800'
@@ -590,7 +591,7 @@ export const SantriMenu: React.FC<SantriMenuProps> = ({
                   </label>
                   <input
                     type="date"
-                    value={formData.tanggal_lahir}
+                    value={cleanTanggalLahirInput(formData.tanggal_lahir)}
                     onChange={(e) => setFormData({ ...formData, tanggal_lahir: e.target.value })}
                     className="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-600 focus:bg-white"
                   />

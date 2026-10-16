@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { KeuanganRecord, KeuanganType, KategoriDana } from '../../types';
+import { StorageService } from '../../services/storageService';
 import { Plus, ArrowDownLeft, ArrowUpRight, Filter, Search, FileText, Image, Calendar, Tag, Wallet, Check, AlertTriangle, X, Printer, CheckCircle, Trash2 } from 'lucide-react';
 
 export interface KasItemRow {
@@ -15,9 +16,9 @@ export interface KasItemRow {
 }
 
 interface KeuanganMenuProps {
-  keuangan: KeuanganRecord[];
+  keuangan?: KeuanganRecord[];
   operatorName: string;
-  onAddKeuangan: (rec: Omit<KeuanganRecord, 'id_keuangan'>) => void;
+  onAddKeuangan: (rec: Omit<KeuanganRecord, 'id_keuangan'>) => Promise<any> | void;
   onAddKeuanganBatch?: (records: Array<Omit<KeuanganRecord, 'id_keuangan'>>, sharedKuitansiId: string) => Promise<KeuanganRecord[]>;
   onCancelKeuangan?: (id: string, reason: string) => void;
   kategoriDana?: KategoriDana[];
@@ -258,13 +259,21 @@ export const KeuanganMenu: React.FC<KeuanganMenuProps> = ({
 
     if (recordsToSave.length > 1 && onAddKeuanganBatch) {
       const savedList = await onAddKeuanganBatch(recordsToSave, sharedKuitansiId);
-      savedRepresentativeRecord = savedList[0] || null;
+      savedRepresentativeRecord = (savedList && savedList[0]) || null;
     } else {
-      // Simpan satu per satu atau fallback jika hanya 1 baris
+      // Simpan satu baris (atau fallback)
       for (const rec of recordsToSave) {
-        onAddKeuangan(rec);
+        const saved = await onAddKeuangan(rec);
+        if (!savedRepresentativeRecord && saved) {
+          savedRepresentativeRecord = saved as KeuanganRecord;
+        }
       }
-      savedRepresentativeRecord = {
+    }
+
+    // Pastikan savedRepresentativeRecord merujuk ke data asli yang tersimpan
+    if (!savedRepresentativeRecord) {
+      const stored = StorageService.getKeuangan().find(k => k.id_kuitansi_gabungan === sharedKuitansiId);
+      savedRepresentativeRecord = stored || {
         ...recordsToSave[0],
         id_keuangan: `KUG-${Date.now()}`
       };

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Student, Transaction, SchoolSetting } from '../../types';
 import { StorageService } from '../../services/storageService';
-import { calculateStudentSppStatus } from '../../utils/sppLogic';
+import { calculateStudentSppStatus, formatTanggalLahir } from '../../utils/sppLogic';
 import {
   X,
   Printer,
@@ -746,7 +746,7 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
                                 <td className="p-2.5">
                                   <div className="font-bold text-slate-900">{st.nama}</div>
                                   <div className="text-[10px] text-slate-500 font-mono">
-                                    NISN: {st.nisn || '-'} {st.tanggal_lahir ? `• Tgl Lahir: ${st.tanggal_lahir}` : ''} &bull; Wali: {st.nama_wali || '-'}
+                                    NISN: {st.nisn || '-'} {st.tanggal_lahir && formatTanggalLahir(st.tanggal_lahir) !== '-' ? `• Tgl Lahir: ${formatTanggalLahir(st.tanggal_lahir)}` : ''} &bull; Wali: {st.nama_wali || '-'}
                                   </div>
                                 </td>
                                 <td className="p-2.5 font-semibold text-slate-700">{st.kelas}</td>
@@ -905,7 +905,7 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
                       <div><span className="text-slate-500">Nama Murid:</span> <strong>{previewStudent.nama}</strong></div>
                       <div><span className="text-slate-500">Kelas / Tingkat:</span> <strong>{previewStudent.kelas}</strong></div>
                       <div><span className="text-slate-500">NISN:</span> <strong className="font-mono">{previewStudent.nisn || '-'}</strong></div>
-                      <div><span className="text-slate-500">Tanggal Lahir:</span> <strong>{previewStudent.tanggal_lahir || '-'}</strong></div>
+                      <div><span className="text-slate-500">Tanggal Lahir:</span> <strong>{formatTanggalLahir(previewStudent.tanggal_lahir)}</strong></div>
                       <div><span className="text-slate-500">Tahun Ajaran:</span> <strong>{setting.tahun_ajaran}</strong></div>
                       {previewStudent.nama_wali ? (
                         <div><span className="text-slate-500">Nama Wali:</span> <strong>{previewStudent.nama_wali}</strong></div>
@@ -1164,7 +1164,7 @@ export const CetakSuratTagihanMassalModal: React.FC<CetakSuratTagihanMassalModal
                     <span className="text-slate-500">NISN:</span> <strong className="font-mono">{st.nisn || '-'}</strong>
                   </div>
                   <div>
-                    <span className="text-slate-500">Tanggal Lahir:</span> <strong>{st.tanggal_lahir || '-'}</strong>
+                    <span className="text-slate-500">Tanggal Lahir:</span> <strong>{formatTanggalLahir(st.tanggal_lahir)}</strong>
                   </div>
                   <div>
                     <span className="text-slate-500">Tahun Ajaran:</span> <strong>{setting.tahun_ajaran}</strong>

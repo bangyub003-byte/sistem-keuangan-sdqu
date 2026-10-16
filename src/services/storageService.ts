@@ -1340,7 +1340,7 @@ export class StorageService {
         nik: String(s.nik || ''),
         nama: String(s.nama || ''),
         tempat_lahir: String(s.tempat_lahir || ''),
-        tanggal_lahir: String(s.tanggal_lahir || ''),
+        tanggal_lahir: String(s.tanggal_lahir || '').trim().split(/[T\s]/)[0],
         jenis_kelamin: (s.jenis_kelamin === 'P' || s.jenis_kelamin === 'Perempuan') ? 'P' : 'L',
         kelas: String(s.kelas || '1A'),
         nama_wali: String(s.nama_wali || ''),
